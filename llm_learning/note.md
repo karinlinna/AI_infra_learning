@@ -379,3 +379,144 @@ PAD 没有语义，不应该参与注意力计算。所以用 Padding 掩码把 
 - **并行性**：不像 RNN 逐步计算，所有位置可以同时处理
 - **长距离依赖**：任意两个位置之间只有一步注意力的距离（RNN 需要经过中间所有步骤）
 - **可扩展性**：结构简单统一，容易堆叠更多层、更多头，配合更多数据就能持续变强（scaling law）
+
+### 实战：一个简单的 GPT-2 模型的生成与使用
+
+#### GPT-2 配置参数与笔记概念对照
+
+```python
+mini_config = GPT2Config(
+    vocab_size=1000,
+    n_positions=64,
+    n_embd=64,
+    n_layer=2,
+    n_head=2,
+    n_inner=128,
+    activation_function="gelu",
+    resid_pdrop=0.1,
+    embd_pdrop=0.1,
+    attn_pdrop=0.1,
+)
+```
+
+| 参数 | 值 | 对应笔记概念 |
+|------|-----|-------------|
+| `vocab_size` | 1000 | **一、词嵌入** — Embedding 矩阵的行数，决定能表示多少个不同的 token |
+| `n_positions` | 64 | **二、位置编码** — 最大序列长度，位置编码矩阵的行数（GPT-2 用可学习的位置嵌入） |
+| `n_embd` | 64 | **一、词嵌入** — 就是 `d_model`，每个 token 向量的维度 |
+| `n_layer` | 2 | **六、完整数据流** — 堆叠多少个 Transformer 层（每层包含一次自注意力 + 一次 FFN） |
+| `n_head` | 2 | **三、多头注意力** — 注意力头的数量 H，每个头的维度 `d_k = n_embd / n_head = 32` |
+| `n_inner` | 128 | **四、FFN** — 就是 `d_ff`，前馈网络升维后的维度（通常是 `4 × d_model`，这里 `128 = 2 × 64`） |
+| `activation_function` | `"gelu"` | **四、FFN** — FFN 中间的激活函数，GELU 在零点附近比 ReLU 更平滑 |
+| `resid_pdrop` | 0.1 | **五、残差连接** — 残差连接之后的 dropout |
+| `embd_pdrop` | 0.1 | **一 + 二** — Token Embedding + Position Encoding 之后的 dropout |
+| `attn_pdrop` | 0.1 | **三、自注意力** — softmax 之后、乘以 V 之前的 dropout |
+
+> 三个 dropout 参数的作用：训练时随机丢弃 10% 的神经元输出（置为 0），防止过拟合。推理时不生效。
+
+
+ 结合源码，分三个问题回答：
+
+  ---
+  1. 配置是怎么生成模型的？
+
+  GPT2LMHeadModel(mini_config) 这一行触发了整个模型的构建，源码调用链如下：
+
+  GPT2LMHeadModel.__init__(config)
+  ├── self.transformer = GPT2Model(config)
+  │   ├── self.wte = nn.Embedding(vocab_size=1000, n_embd=64)    # token嵌入矩阵 [1000×64]叫"隐藏层"是因为这些中间向量是模型内部的表示，不是输入（token id）也不是最终输出（词汇表概率），是藏在模型里面的中间状态。
+  │   ├── self.wpe = nn.Embedding(n_positions=64, n_embd=64)     # 位置嵌入矩阵 [64×64]
+  │   ├── self.drop = nn.Dropout(embd_pdrop=0.1)                 # 嵌入后的dropout
+  │   ├── self.h = ModuleList([                                   # n_layer=2 个Block
+  │   │   GPT2Block(config, layer_idx=0)
+  │   │   GPT2Block(config, layer_idx=1)
+  │   │   ])
+  │   │   每个Block内部：
+  │   │   ├── self.ln_1 = LayerNorm(64)                           # 注意力前的LayerNorm
+  │   │   ├── self.attn = GPT2Attention(config)
+  │   │   │   ├── self.c_attn = Conv1D(3*64, 64)                 # 一次性生成Q,K,V [64→192]
+  │   │   │   ├── self.c_proj = Conv1D(64, 64)                   # 输出投影
+  │   │   │   ├── self.attn_dropout = Dropout(0.1)
+  │   │   │   └── self.resid_dropout = Dropout(0.1)
+  │   │   ├── self.ln_2 = LayerNorm(64)                           # FFN前的LayerNorm
+  │   │   └── self.mlp = GPT2MLP(n_inner=128, config)
+  │   │       ├── self.c_fc = Conv1D(128, 64)                    # 升维 64→128
+  │   │       ├── self.act = gelu                                 # 激活函数
+  │   │       ├── self.c_proj = Conv1D(64, 128)                  # 降维 128→64
+  │   │       └── self.dropout = Dropout(0.1)
+  │   └── self.ln_f = LayerNorm(64)                               # 最终LayerNorm
+  └── self.lm_head = nn.Linear(64, 1000, bias=False)              # 输出层 [64→1000]
+
+  关键点：
+  - 所有权重都是随机初始化的（initializer_range=0.02 的正态分布），不是预训练的
+  - lm_head.weight 和 wte.weight 是权重绑定的（tied
+  weights），即输入嵌入矩阵和输出投影矩阵共享同一份参数
+  - 源码里 Q、K、V 不是三个独立矩阵，而是用一个 Conv1D(3*n_embd, n_embd) 一次算出来再
+  split，效率更高
+
+  ---
+  2. 词汇从哪里来？
+
+  你的代码里 vocab_size=1000 只是告诉模型"词汇表有 1000 个 token"，但并没有定义这 1000 个
+  token 分别是什么。
+
+  实际的词汇表由 Tokenizer 提供，和模型是分开的两个东西：
+
+  模型只知道：有1000个ID（0~999），每个对应一个64维向量
+  self.wte = nn.Embedding(1000, 64)   # 随机初始化
+
+  Tokenizer负责：文字 ↔ ID 的映射
+  比如 GPT-2 官方用的是 BPE (Byte Pair Encoding) tokenizer
+  词汇表存在 vocab.json 和 merges.txt 里
+
+  你的测试代码里用的是：
+  input_ids = torch.randint(0, 1000, (batch_size, seq_length))
+  这是随机生成的假 token ID，没有经过 tokenizer，所以输出也是无意义的。
+
+  真正使用时需要：
+  from transformers import GPT2Tokenizer
+  tokenizer = GPT2Tokenizer.from_pretrained("gpt2")  # 加载官方词汇表(50257个token)
+  input_ids = tokenizer.encode("我爱学习", return_tensors="pt")
+
+  ---
+  3. 怎么训练的？
+
+  你代码里的这一行其实已经展示了训练的核心逻辑：
+
+  outputs = model(input_ids, labels=input_ids)
+
+  源码中 GPT2LMHeadModel.forward 做了这些事：
+
+  输入: input_ids = [我, 爱, 学, 习]
+
+  1. 前向传播，得到每个位置的logits (形状: [batch, seq_len, vocab_size])
+     logits[0] = 模型在位置0预测的下一个token的概率分布
+     logits[1] = 模型在位置1预测的下一个token的概率分布
+     ...
+
+  2. 计算loss时，labels向左移一位（源码自动处理）：
+     位置0的预测 → 应该预测出位置1的token（"爱"）
+     位置1的预测 → 应该预测出位置2的token（"学"）
+     位置2的预测 → 应该预测出位置3的token（"习"）
+
+  3. 用CrossEntropyLoss计算预测和真实label之间的差距
+
+  这就是 Causal Language Modeling（因果语言模型） 的训练方式——给定前面的 token，预测下一个
+  token。
+
+  完整的训练循环大概是：
+
+  optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+
+  for batch in dataloader:
+      input_ids = batch["input_ids"]
+      outputs = model(input_ids, labels=input_ids)  # 前向 + 算loss
+      loss = outputs.loss
+      loss.backward()          # 反向传播，计算梯度
+      optimizer.step()         # 更新权重
+      optimizer.zero_grad()    # 清零梯度
+
+  每一步都在让模型的预测更接近真实的下一个 token，Embedding 矩阵、Q/K/V 权重、FFN
+  权重全部在这个过程中被更新。
+  
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"

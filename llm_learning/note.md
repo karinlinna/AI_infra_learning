@@ -614,7 +614,7 @@ input_ids → wte(token emb) + wpe(pos emb) → dropout
 > 在 PyCharm 中，按住 Cmd 点击 `GPT2LMHeadModel` 就能跳转到源码，然后在上面这些行号打断点，Debug 运行 `gpt2_test.py` 就能逐步跟踪整个流程了。
 
 
-#### 阅读源码：Python 对象创建流程
+### 九、阅读源码：Python 对象创建流程
 
 ```python
 model = GPT2Model(config)   # __init__ 执行，搭建结构

@@ -612,3 +612,93 @@ input_ids → wte(token emb) + wpe(pos emb) → dropout
 ```
 
 > 在 PyCharm 中，按住 Cmd 点击 `GPT2LMHeadModel` 就能跳转到源码，然后在上面这些行号打断点，Debug 运行 `gpt2_test.py` 就能逐步跟踪整个流程了。
+
+
+#### 阅读源码：Python 对象创建流程
+
+```python
+model = GPT2Model(config)   # __init__ 执行，搭建结构
+output = model(input_ids)   # __call__ → forward 执行，数据流过
+output2 = model(input_ids2) # forward 再次执行
+```
+
+**`__init__` 只跑一次，`forward` 每次推理/训练都跑。**
+
+调用链总结：
+
+```
+model(input_ids)
+  → __call__
+    → GPT2LMHeadModel.forward()     ← 你跳转到的位置
+      → self.transformer(input_ids)
+        → GPT2Model.forward()        ← 内部再调用 transformer 主体
+      → self.lm_head(hidden_states)  ← 输出 logits
+```
+
+> 两层 forward，外层是 `LMHeadModel`，内层是 `GPT2Model`。
+
+---
+
+#### Attention 内部的赋值与预训练
+
+`_init_weights(self, module)` 是权重初始化方法，在模型创建时对每个子模块的参数赋初始值。
+
+```python
+self.c_attn = Conv1D(3 * self.embed_dim, self.embed_dim)
+```
+
+这一行就是 W_QKV 的定义（约第 190 行），一次性生成 Q、K、V。
+
+> 没用 `from_pretrained("gpt2")` 加载预训练权重，而是用 `GPT2LMHeadModel(mini_config)` 从零创建，所以权重是**随机初始化**的。这就是为什么 loss 会很高——模型还没训练过。
+
+---
+
+#### 随机初始化的含义
+
+**随机初始化**就是所有权重（包括生成 Q、K、V 的权重矩阵）都是用随机数填充的，没有经过任何训练。
+
+以 Q、K、V 的权重为例：
+
+```python
+# 模型创建时，W_QKV 被初始化为：
+W_QKV = N(0, 0.02)  # 从均值0、标准差0.02的正态分布随机采样
+
+# 也就是说矩阵里全是类似这样的随机小数：
+[[ 0.013, -0.007,  0.021, ...],
+ [-0.015,  0.003,  0.018, ...],
+ [ 0.009, -0.022,  0.001, ...]]
+```
+
+#### 随机初始化的缺点
+
+**模型什么都不"懂"：**
+
+- **Q 不知道该关注什么** —— 随机的 Q 生成的查询没有语义意义
+- **K 不知道该匹配什么** —— 随机的 K 无法正确表示"我有什么信息"
+- **V 传递的是垃圾信息** —— 随机的 V 没有学到有用的特征
+
+具体表现：
+
+- 注意力分数接近**均匀分布**（每个 token 对其他 token 的关注差不多），因为 Q·K^T 算出来的值都是随机噪声
+- 最终预测下一个 token 时，相当于在词表上**随机猜**
+- loss ≈ `ln(1000)` ≈ 6.9（词表大小 1000 的随机猜测交叉熵）
+
+#### 对比预训练模型
+
+```python
+# 随机初始化（测试代码）
+model = GPT2LMHeadModel(mini_config)              # loss ≈ 6.9
+
+# 加载预训练权重
+model = GPT2LMHeadModel.from_pretrained("gpt2")   # loss 很低
+```
+
+预训练模型的 W_Q、W_K、W_V 经过了海量文本训练，已经学会了：
+
+- Q 能提出有意义的查询（比如"前面有没有主语？"）
+- K 能正确标识自己的语法/语义角色
+- V 能传递有用的上下文信息
+
+> **总结：** 模型所有参数（不只是 QKV，还有 Embedding、MLP、LayerNorm 等）都是随机数，相当于一个"白纸"状态的模型，需要经过训练才能产生有意义的输出。
+
+---

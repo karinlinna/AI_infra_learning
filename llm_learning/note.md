@@ -702,3 +702,213 @@ model = GPT2LMHeadModel.from_pretrained("gpt2")   # loss 很低
 > **总结：** 模型所有参数（不只是 QKV，还有 Embedding、MLP、LayerNorm 等）都是随机数，相当于一个"白纸"状态的模型，需要经过训练才能产生有意义的输出。
 
 ---
+#### 注意力层与 FFN 的分工
+
+**注意力层** = 阅读（让 token 之间互相看，交换信息）：
+
+```
+"我 喜欢 吃 苹果"
+→ "苹果" 通过注意力知道了 "吃" 和 "喜欢" 的信息
+→ 但只是把信息混合在一起，没有深层理解
+```
+
+**FFN** = 思考（对每个 token 独立地提取更深层特征）：
+
+```
+"苹果" 拿到混合信息后，经过 FFN：
+→ 64维 升到 128维（展开到更大空间，捕捉更多特征）
+→ GELU（加入非线性，能表达复杂关系）
+→ 128维 降回 64维（压缩回来）
+→ "苹果" 的向量从"水果"变成了"被吃的水果"
+```
+
+> 只读不想，信息只是堆在一起；只想不读，没有输入。两者配合才能真正理解语言。GPT-2 的每一层就是 `读 → 想 → 读 → 想 → ...`，层数越多理解越深。
+
+---
+
+#### Attention 代码详解
+
+GPT-2 多头注意力中 Q、K、V 的拆分和变形操作（以本项目配置 `n_embd=64, n_head=2, head_dim=32` 为例）：
+
+**第 1 步：生成 Q、K、V**
+
+```python
+query_states, key_states, value_states = self.c_attn(hidden_states).split(self.split_size, dim=2)
+```
+
+- `self.c_attn` 是一个线性层（`Conv1D`），将 `hidden_states` 投影成 3 倍宽度的张量
+- `hidden_states` 是输入到注意力层的文本表示向量，形状为 `(batch_size, seq_len, hidden_dim)`
+- 底层计算：`x = x @ W + b`（即 `torch.addmm`）
+- `.split(self.split_size, dim=2)` 沿最后一维等分成 3 份：Q、K、V
+- 例如：`(2, 16, 64)` → 投影成 `(2, 16, 192)` → 拆分成 3 个 `(2, 16, 64)`
+
+**第 2 步：计算多头的目标形状**
+
+```python
+shape_kv = (*key_states.shape[:-1], -1, self.head_dim)
+# 即 (2, 16, -1, 32)，-1 由 PyTorch 自动推算为 2（n_head）
+```
+
+- 将最后一维拆成 `(num_heads, head_dim)` 的形状
+- `view` 的原理：数据完全没动，只是修改 shape 和 stride（访问索引规则），零拷贝
+
+**第 3 步：变形 + 转置**
+
+```python
+key_states = key_states.view(shape_kv).transpose(1, 2)
+value_states = value_states.view(shape_kv).transpose(1, 2)
+```
+
+- `.view(shape_kv)`：`(2, 16, 64)` → `(2, 16, 2, 32)`
+- `.transpose(1, 2)`：交换 `seq_len` 和 `num_heads` → `(2, 2, 16, 32)`
+- 目的：让每个注意力头拥有独立的 `(seq, head_dim)` 矩阵，方便后续计算 `Q × K^T`
+
+**整体流程图：**
+
+```
+hidden_states: (2, 16, 64)
+        │
+    c_attn 线性层 (W: 64→192)
+        │
+        ▼
+    (2, 16, 192)
+        │
+    split 三等分
+        │
+        ▼
+Q, K, V 各 (2, 16, 64)
+        │
+    view + transpose
+        │
+        ▼
+K, V 各 (2, 2, 16, 32)    ← (batch, n_head, seq, head_dim)
+```
+
+> 变形后每个注意力头可以独立计算注意力分数，这就是多头注意力的核心操作。
+
+---
+
+#### MLP（FFN）代码详解
+
+FFN 前馈网络对每个 token 独立做非线性变换。结合配置 `n_embd=64, n_inner=128`：
+
+```python
+hidden_states = self.c_fc(hidden_states)     # 升维：64 → 128（W1）
+hidden_states = self.act(hidden_states)       # 激活函数 GELU
+hidden_states = self.c_proj(hidden_states)    # 降维：128 → 64（W2）
+hidden_states = self.dropout(hidden_states)   # 随机丢弃部分神经元，防止过拟合
+```
+
+数据流变化：
+
+```
+(2, 16, 64) → c_fc → (2, 16, 128) → GELU → (2, 16, 128) → c_proj → (2, 16, 64)
+              升维                    非线性                  降回原维度
+```
+
+#### 为什么先升维再降维
+
+```
+64 → 128 → 64（窄 → 宽 → 窄）
+```
+
+升维到更高维空间让模型能学到更复杂的特征变换，然后压回原维度传给下一层。`n_inner` 参数控制中间层宽度（通常设为 `n_embd` 的 4 倍，本项目设为 2 倍）。
+
+#### 为什么需要激活函数
+
+如果没有激活函数，两次线性变换可以合并为一次（`x × W1 × W2 = x × W3`），加了 GELU 后就不能合并，模型才能学到非线性的复杂关系。
+
+#### GELU 激活函数
+
+`GELU(x) = x × Φ(x)`，其中 `Φ(x)` 是标准正态分布的累积分布函数（值域 0~1）：
+
+| 输入 x | Φ(x) | 输出 | 含义 |
+|--------|-------|------|------|
+| 很大（如 3） | ≈ 1.0 | ≈ 3.0 | 几乎全部保留 |
+| 接近 0 | = 0.5 | ≈ 0 | 保留一半 |
+| 很小（如 -3）| ≈ 0.0 | ≈ 0 | 几乎全部丢弃 |
+
+与 ReLU 的区别：GELU 在 0 附近是**平滑过渡**的（没有硬拐角），梯度更稳定，训练效果更好。GPT-2、BERT 等模型都选用 GELU。
+
+> **FFN 中 W 的个数（2 个：W1 和 W2）是写死在代码里的**，不由配置参数控制，这是 Transformer 论文定义的标准结构。
+
+---
+
+#### Transformer Block 结构
+
+`n_layer=2` 意味着有 2 个 Transformer Block，每个 Block 里**既有注意力又有 FFN**，总共 2 次注意力 + 2 次 FFN。
+
+```
+input_ids (2, 16)
+    │
+token embedding + position embedding
+    │
+    ▼
+hidden_states (2, 16, 64)
+    │
+    ├── Block 0 ──┐
+    │   ln_1       │
+    │   注意力      │  ← 第 1 次注意力
+    │   残差连接    │
+    │   ln_2       │
+    │   FFN        │  ← 第 1 次 FFN
+    │   残差连接    │
+    │──────────────┘
+    │
+    ├── Block 1 ──┐
+    │   ln_1       │
+    │   注意力      │  ← 第 2 次注意力
+    │   残差连接    │
+    │   ln_2       │
+    │   FFN        │  ← 第 2 次 FFN
+    │   残差连接    │
+    │──────────────┘
+    │
+    ▼
+输出 logits (2, 16, 1000)
+```
+
+注意力和 FFN 成对出现，永远绑在一个 Block 里。`n_layer` 控制 Block 的数量。
+
+常见模型的 Block 数量：
+
+| 模型 | n_layer | 参数量 |
+|------|---------|--------|
+| GPT-2 Small | 12 | 117M |
+| GPT-2 Medium | 24 | 345M |
+| GPT-2 XL | 48 | 1.5B |
+| GPT-3 | 96 | 175B |
+| LLaMA-7B | 32 | 7B |
+
+---
+
+#### lm_head 与损失计算
+
+#### lm_head：映射到词表
+
+```python
+logits = self.lm_head(hidden_states[:, slice_indices, :])
+```
+
+`lm_head` 是最后一层线性层，将 hidden_states 映射到词表大小，得到每个词的概率分数：
+
+```
+hidden_states: (2, 16, 64) → lm_head (W: 64→1000) → logits: (2, 16, 1000)
+```
+
+输出的 1000 个分数代表下一个词是词表中每个词的可能性。词表存储在 `model.transformer.wte` 中，形状 `(1000, 64)`，每行是一个词的向量表示。
+
+#### 损失函数：交叉熵
+
+```python
+loss = self.loss_function(logits, labels, vocab_size=self.config.vocab_size)
+```
+
+拿模型预测的 logits 与真实答案 labels 对比：
+
+```
+输入 [3]     → 预测下一个词的概率 → 正确答案是 15 → 第15个位置分数越高越好
+输入 [3, 15] → 预测下一个词的概率 → 正确答案是 7  → 第7个位置分数越高越好
+```
+
+`loss = -log(模型预测正确词的概率)`：预测对了 loss 接近 0，预测错了 loss 很大。随机初始化模型的 loss ≈ `ln(1000)` ≈ 6.9（相当于在 1000 个词中随机猜）。

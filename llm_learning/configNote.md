@@ -7,6 +7,25 @@ q邮箱+大写短密码
 ## open claw
 https://zhuanlan.zhihu.com/p/2000850539936765122 openclaw 
 
+## 一些配置
+⏺ venv 目录已经不存在了。需要重新创建。运行以下命令：
+
+  deactivate                                                                    
+  rm -rf venv     
+                                                                                
+  然后确认你的 Python 3.12 路径：                                               
+
+  python3.12 --version
+
+  如果能输出版本号，就用它创建新的虚拟环境：
+
+  python3.12 -m venv .venv 
+  source .venv/bin/activate
+  pip install torch transformers
+  cd /Users/lijialin/Work/Github/robotlearning/llm_learning                      
+  python3 -m venv venv                                                           
+  source venv/bin/activate                                                       
+  pip install torch transformers psutil   
 
 ## 自学视频
 https://space.bilibili.com/271305784/lists/1827462?type=season

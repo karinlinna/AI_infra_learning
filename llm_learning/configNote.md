@@ -10,6 +10,19 @@ https://zhuanlan.zhihu.com/p/2000850539936765122 openclaw
 
 ## 自学视频
 https://space.bilibili.com/271305784/lists/1827462?type=season
+https://huggingface.co/ q邮箱
+transformers库
+预训练（背后原理）、指令微调（有什么方法，适用什么场景）
+显存与规模的估算，8b模型 3080显卡估算，怎么设置batchsize？要不要梯度累计？是否需要梯度检查点？
+混合精度训练、deepspeed框架，如何做并行？
+推理阶段：量化，模型规模变小，跑的更快、kvcache、投机采样、加速推理、降低部署成本
+大模型的评估：怎么知道这个模型好？指标都有什么ppl？
+
+深度学习基础：
+梯度下降，损失函数，残差连接，学习率，卷积神经网络了解，
+
+强化学习，上手dpo、ppo、grpo
+
 ## 大模型并发
 维度 大模型 Infra（训练 + 推理）
 计算核心 — GPU/TPU/NPU 异构集群，张量并行 / 矩阵运算优化（CUDA/CANN）

@@ -185,14 +185,66 @@
 🗺️ 推荐执行顺序
 第一步：跑通环境（1小时）
 bash pip install transformers datasets peft accelerate trl bitsandbytes evaluate
-python train.py --stage estimate   # 先看看你的显卡够不够
+python llm_training_guide.py --stage estimate   # 先看看你的显卡够不够
+输出：
+root@autodl-container-611b489072-2d64d19f:~/github/AI_infra_learning/llm_learning/llm_training_guide#  python llm_training_guide.py --stage estimate
+config.json: 661B [00:00, 885kB/s]
+tokenizer_config.json: 1.29kB [00:00, 122kB/s]
+vocab.json: 2.78MB [00:01, 1.48MB/s]
+merges.txt: 1.67MB [00:00, 1.93MB/s]
+tokenizer.json: 7.03MB [00:02, 3.07MB/s]
+=== 0.5B 模型（Qwen2-0.5B）===
+模型权重:   1.0 GB
+优化器(Adam): 4.0 GB
+梯度:       1.0 GB
+激活值估算: 0.0 GB
+总计(训练): 6.0 GB
+总计(推理): 1.0 GB
+
+RTX 3080 (10GB) 建议配置：
+  batch_size=2, grad_accum=8 → 等效batch=16
+  开启 gradient_checkpointing（省约30%激活值显存）
+  使用 bf16/fp16 混合精度（省50%模型显存）
+
+=== 8B 模型（LLaMA-3-8B）===
+模型权重:   16.0 GB
+优化器(Adam): 64.0 GB
+梯度:       16.0 GB
+激活值估算: 0.0 GB
+总计(训练): 96.0 GB
+总计(推理): 16.0 GB
+
+RTX 3080 (10GB) 建议配置：
+  batch_size=2, grad_accum=8 → 等效batch=16
+  开启 gradient_checkpointing（省约30%激活值显存）
+  使用 bf16/fp16 混合精度（省50%模型显存）
+
 第二步：跑指令微调 SFT + LoRA（最有价值，直接上手）
-bash python train.py --stage sft
+bash python llm_training_guide.py --stage sft
 用的是 Qwen2-0.5B + 4bit QLoRA，3080 完全够跑，可训练参数只有 0.68%。
+
+⏺ 这一步是用 LoRA 做指令微调（SFT, Supervised Fine-Tuning）。                   
+                                                                     
+  具体流程看脚本第 172-253 行的 sft_with_lora() 函数，它做了这几件事：          
+                  
+  1. 加载基础模型 — 用 4bit 量化（QLoRA）加载 Qwen2-0.5B，大幅省显存            
+  2. 挂载 LoRA 适配器 — 冻结原始模型权重，只训练额外插入的低秩矩阵（只训练约    
+  0.68% 的参数）
+  3. 准备指令数据 — 用 Alpaca 格式的 (instruction, input, output)
+  数据集，教模型按指令回答问题
+  4. 训练 — 3 个 epoch，batch_size=4，梯度累积 4 步
+  5. 保存 LoRA 权重 — 只有几十 MB
+  6. 合并权重 — 把 LoRA 权重合回基础模型，得到完整可推理的模型
+
+  简单说：预训练让模型学会"语言"，SFT
+  让模型学会"听话"（按照人类指令格式回答问题）。
+
+
+
 第三步：评估模型
-bash python train.py --stage eval   # 看 PPL 有没有下降
+bash python llm_training_guide.py --stage eval   # 看 PPL 有没有下降
 第四步：推理优化
-bashpython train.py --stage infer  # 试试量化推理 + KV Cache
+bashpython llm_training_guide.py --stage infer  # 试试量化推理 + KV Cache
 
 🔑 几个关键决策点
 问题3080 的答案

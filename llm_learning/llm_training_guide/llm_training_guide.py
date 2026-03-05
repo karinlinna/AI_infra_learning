@@ -235,9 +235,7 @@ def sft_with_lora():
         model=model,
         args=training_args,
         train_dataset=sft_dataset,
-        tokenizer=tokenizer,
-        max_seq_length=512,
-        dataset_text_field=None,  # 数据已预处理
+        processing_class=tokenizer,
     )
 
     trainer.train()

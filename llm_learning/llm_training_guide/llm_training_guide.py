@@ -26,6 +26,15 @@ pip install evaluate rouge_score  # 评估
 """
 
 # ============================================================
+# 统一数据目录：模型缓存、数据集、训练输出都放在 ~/data 下
+# ============================================================
+import os
+DATA_ROOT = os.path.expanduser("~/data")
+os.environ["HF_HOME"] = "/root/autodl-tmp/huggingface"                # 模型缓存（数据盘）
+os.environ["HF_DATASETS_CACHE"] = "/root/autodl-tmp/datasets"         # 数据集缓存（数据盘）
+OUTPUT_DIR = os.path.join(DATA_ROOT, "output")                        # 训练输出
+
+# ============================================================
 # Step 2: 数据准备
 # ============================================================
 from datasets import load_dataset
@@ -127,7 +136,7 @@ def pretrain():
     # → batch_size=2，梯度累积=8，等效 batch=16
 
     training_args = TrainingArguments(
-        output_dir="./output/pretrain",
+        output_dir=os.path.join(OUTPUT_DIR, "pretrain"),
         num_train_epochs=3,
 
         # ---- 显存控制 ----
@@ -160,7 +169,7 @@ def pretrain():
     )
 
     trainer.train()
-    trainer.save_model("./output/pretrain/final")
+    trainer.save_model(os.path.join(OUTPUT_DIR, "pretrain/final"))
 
 
 # ============================================================
@@ -219,7 +228,7 @@ def sft_with_lora():
     sft_dataset = prepare_sft_data()
 
     training_args = TrainingArguments(
-        output_dir="./output/sft_lora",
+        output_dir=os.path.join(OUTPUT_DIR, "sft_lora"),
         num_train_epochs=3,
         per_device_train_batch_size=4,
         gradient_accumulation_steps=4,   # 等效 batch=16
@@ -241,14 +250,14 @@ def sft_with_lora():
     trainer.train()
 
     # 保存 LoRA 权重（只有几十MB，不是完整模型）
-    model.save_pretrained("./output/sft_lora/final")
+    model.save_pretrained(os.path.join(OUTPUT_DIR, "sft_lora/final"))
 
     # 合并 LoRA 权重到基础模型（推理时用）
     from peft import PeftModel
     base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=torch.bfloat16)
-    merged_model = PeftModel.from_pretrained(base_model, "./output/sft_lora/final")
+    merged_model = PeftModel.from_pretrained(base_model, os.path.join(OUTPUT_DIR, "sft_lora/final"))
     merged_model = merged_model.merge_and_unload()
-    merged_model.save_pretrained("./output/sft_lora/merged")
+    merged_model.save_pretrained(os.path.join(OUTPUT_DIR, "sft_lora/merged"))
 
 
 # ============================================================
@@ -339,7 +348,7 @@ def inference_demo():
 
     quantization_config = BitsAndBytesConfig(load_in_4bit=True)
     model = AutoModelForCausalLM.from_pretrained(
-        "./output/sft_lora/merged",
+        os.path.join(OUTPUT_DIR, "sft_lora/merged"),
         quantization_config=quantization_config,
         device_map="auto"
     )
@@ -457,7 +466,7 @@ if __name__ == "__main__":
     elif args.stage == "sft":
         sft_with_lora()
     elif args.stage == "eval":
-        evaluate_model("./output/sft_lora/merged")
+        evaluate_model(os.path.join(OUTPUT_DIR, "sft_lora/merged"))
     elif args.stage == "infer":
         inference_demo()
     elif args.stage == "estimate":

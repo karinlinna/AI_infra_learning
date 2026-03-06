@@ -4,8 +4,11 @@ https://www.yuque.com/nicaisadasd/fwextu/ekk2q8nrf3ow4k9q
 征集买家秀晒图活动，评价20字以上+2张效果图，赠送一张Claude Code Max 请求【100-200次】59a7fb4943a24d97b4fba76db2940e66
 q邮箱+大写短密码
 
-https://claude888.creativeai.work karinlinna 小短字母
-autoDL 手机号 微信
+https://claude888.creativeai.work karinlinna 小短字母 1天
+
+https://claudeonline.top/list 15天
+
+autoDL 手机号 微信 80块
 
 ## open claw
 https://zhuanlan.zhihu.com/p/2000850539936765122 openclaw 
@@ -16,19 +19,14 @@ https://zhuanlan.zhihu.com/p/2000850539936765122 openclaw
   deactivate                                                                    
   rm -rf venv     
                                                                                 
-  然后确认你的 Python 3.12 路径：                                               
-
+  然后确认你的 Python 3.12 路径：
   python3.12 --version
-
   如果能输出版本号，就用它创建新的虚拟环境：
 
   python3.12 -m venv .venv 
   source .venv/bin/activate
   pip install torch transformers
-  cd /Users/lijialin/Work/Github/robotlearning/llm_learning                      
-  python3 -m venv venv                                                           
-  source venv/bin/activate                                                       
-  pip install torch transformers psutil   
+  cd /Users/lijialin/Work/Github/robotlearning/llm_learning
 
 ## 自学视频
 https://space.bilibili.com/271305784/lists/1827462?type=season

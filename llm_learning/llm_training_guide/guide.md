@@ -1,7 +1,8 @@
 ## 说明
+目前环境 AutoDL RTX 5090 * 1卡
 🗺️ 推荐执行顺序
 第一步：跑通环境（1小时）
-pip install transformers datasets peft accelerate trl bitsandbytes evaluate
+pip install transformers datasets peft accelerate trl bitsandbytes evaluate （第一次）
 配置镜像：export HF_ENDPOINT=https://hf-mirror.com
 python llm_training_guide.py --stage estimate
 
@@ -10,9 +11,10 @@ python llm_training_guide.py --stage sft
 用的是 Qwen2-0.5B + 4bit QLoRA，3080 完全够跑，可训练参数只有 0.68%。
 
 第三步：评估模型
-bash python llm_training_guide.py --stage eval   # 看 PPL 有没有下降
+pip install rouge_score nltk （第一次）
+python llm_training_guide.py --stage eval   # 看 PPL 有没有下降
 第四步：推理优化
-bashpython llm_training_guide.py --stage infer  # 试试量化推理 + KV Cache
+python llm_training_guide.py --stage infer  # 试试量化推理 + KV Cache
 
 🔑 几个关键决策点
 问题3080 的答案

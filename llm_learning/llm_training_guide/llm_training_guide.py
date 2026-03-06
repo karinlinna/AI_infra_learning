@@ -443,12 +443,39 @@ def evaluate_model(model_path: str):
     #         --tasks mmlu --num_fewshot 5 --batch_size 4
 
     """
-    8c. 生成质量评估
+    8c. 生成质量评估 —— 用模型实际生成回答，再与参考答案计算 ROUGE-L
     """
     rouge = evaluate.load("rouge")
-    predictions = ["模型生成的答案"]
-    references  = ["标准参考答案"]
-    result = rouge.compute(predictions=predictions, references=references)
+
+    # 准备几组 prompt + 参考答案
+    eval_samples = [
+        {"prompt": "请简要介绍什么是机器学习。", "reference": "机器学习是人工智能的一个分支，通过数据和算法让计算机自动学习和改进，而无需显式编程。"},
+        {"prompt": "Python的优点有哪些？", "reference": "Python语法简洁易读，拥有丰富的第三方库，适用于数据科学、Web开发、自动化等多个领域。"},
+        {"prompt": "什么是深度学习？", "reference": "深度学习是机器学习的子集，使用多层神经网络从大量数据中自动学习特征表示。"},
+    ]
+
+    predictions = []
+    references = []
+    for sample in eval_samples:
+        input_ids = tokenizer(sample["prompt"], return_tensors="pt").input_ids.to("cuda")
+        with torch.no_grad():
+            output_ids = model.generate(input_ids, max_new_tokens=128, do_sample=False)
+        # 只取新生成的 token
+        generated_text = tokenizer.decode(output_ids[0][input_ids.shape[1]:], skip_special_tokens=True)
+        predictions.append(generated_text)
+        references.append(sample["reference"])
+        print(f"[Prompt]    {sample['prompt']}")
+        print(f"[Generated] {generated_text[:200]}")
+        print(f"[Reference] {sample['reference'][:200]}")
+        print()
+
+    # 中文需要按字切分（加空格），否则 rouge_score 会把整段当成一个 token
+    def tokenize_zh(text):
+        return " ".join(list(text))
+
+    tokenized_preds = [tokenize_zh(p) for p in predictions]
+    tokenized_refs  = [tokenize_zh(r) for r in references]
+    result = rouge.compute(predictions=tokenized_preds, references=tokenized_refs)
     print(f"ROUGE-L: {result['rougeL']:.4f}")
 
 

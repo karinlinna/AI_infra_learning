@@ -1,6 +1,19 @@
 ## 说明
 目前环境 AutoDL RTX 5090 * 1卡
-🗺️ 推荐执行顺序
+清理回收站 https://zhuanlan.zhihu.com/p/1978177366409900756
+查看占用：source ~/.bashrc
+1. 清理系统盘回收站
+这是系统盘瘦身的第一步，通常能释放几百 MB 到几 GB 的空间。
+确认目录存在 ls -la /root/.local/share/Trash/
+强制清空系统盘回收站（注意 rm -rf 的威力，请确保路径无误） rm -rf /root/.local/share/Trash/*
+再次检查大小，应显示为 0 或 4.0K du -sh /root/.local/share/Trash
+2. 清理数据盘回收站（核心操作）
+针对我们发现的那个 22GB 的巨型回收站，必须将其彻底清除才能恢复数据盘性能。
+再次确认目标目录（切勿手滑删错） echo "准备清理目录: /root/autodl-tmp/.Trash-0"
+执行删除 rm -rf /root/autodl-tmp/.Trash-0
+验证清理结果（如果目录不存在说明清理成功）[ ! -d "/root/autodl-tmp/.Trash-0" ] && echo "数据盘回收站已清理完毕"
+
+## 代码推荐执行顺序
 第一步：跑通环境（1小时）
 pip install transformers datasets peft accelerate trl bitsandbytes evaluate （第一次）
 配置镜像：export HF_ENDPOINT=https://hf-mirror.com

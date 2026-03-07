@@ -1,4 +1,5 @@
-### 预训练定义与原理
+### 代码阶段1
+预训练定义与原理
 核心原理：Next Token Prediction
 
   预训练的本质极其简单——给定前面的文字，预测下一个 token。
@@ -51,10 +52,9 @@
   就是别人预训练好的模型，你在此基础上做 SFT 微调。
 
 ## 代码阅读
-### 代码43-47
+### 代码阶段2
 #### Tokenizer 什么是
- 不是一字一token的。Tokenizer 用的是子词分词（subword                          
-  tokenization），切分粒度不是按字，而是按它词表里学到的片段。                 
+ 不是一字一token的。Tokenizer 用的是子词分词（subword tokenization），切分粒度不是按字，而是按它词表里学到的片段。                 
                                                                                 
   实际跑一下就能看到：
                                                                                 
@@ -78,4 +78,346 @@
   token，涵盖了常见的字、词、子词片段、英文单词、代码符号等。
 
   核心原则：高频的合并，低频的拆开，在词表大小和表达效率之间取平衡。
+
+● AutoTokenizer.from_pretrained(MODEL_NAME)
+
+  这个方法做的事情是：从 Hugging Face 下载并加载指定模型的分词器（Tokenizer）。
+
+  它具体做了什么
+
+  "你好，世界" → [108386, 3837, 99489]
+
+  1. 根据 MODEL_NAME 自动识别模型类型（"Auto" 的含义）— Qwen2 用 Qwen2Tokenizer，GPT2 用 GPT2Tokenizer，不用你手动选
+  2. 下载分词器配置文件，包括：
+    - tokenizer.json — 词表和分词规则
+    - tokenizer_config.json — 特殊 token 配置
+    - vocab.json / merges.txt — BPE 合并规则（取决于具体实现）
+  3. 构建一个可用的 Tokenizer 对象，具备以下能力：
+  编码：文本 → token IDs
+  tokenizer("你好世界")
+  → {"input_ids": [108386, 99489], "attention_mask": [1, 1]}
+  解码：token IDs → 文本
+  tokenizer.decode([108386, 99489])
+  → "你好世界"
+
+  为什么需要它
+
+  模型不认识文字，只认识数字。Tokenizer 就是文字和数字之间的翻译官：
+
+  用户输入 "Hello"
+    → Tokenizer 编码 → [9707]
+    → 模型处理 → 预测下一个 token [1917]
+    → Tokenizer 解码 → "world"
+
+  后面那行的作用
+
+  tokenizer.pad_token = tokenizer.eos_token
+
+  Qwen2/GPT 系列默认没有 pad_token（填充符），但 batch 训练时需要把不等长的序列填充到同一长度，所以用
+  eos_token（结束符）来充当填充符。
+
+#### wiki纯文本预训练
+  1. 加载数据集
+  dataset = load_dataset("wikitext", "wikitext-2-raw-v1")
+  从 Hugging Face 下载 WikiText-2 数据集，就是一堆维基百科的纯文本。
+
+  ---
+  2. tokenize() — 文本转数字
+
+  def tokenize(examples):
+      return tokenizer(
+          examples["text"],       # 输入原始文本
+          truncation=True,        # 超过 max_length 就截断
+          max_length=512,         # 最长 512 个 token
+          return_special_tokens_mask=True  # 标记哪些是特殊token
+      )
+
+  "The cat sat on the mat" → [464, 3797, 3332, 319, 262, 2603]
+
+  ---
+  3. group_texts() — 核心步骤，拼接再切块
+
+  这是最关键的部分，解决一个问题：很多文本 tokenize 后远不到 512，直接训练会浪费大量 padding。
+
+  第一步：把所有短序列拼成一条长链，可以自主学习之间关系，无需介意拼接误差。
+  concatenated = {k: sum(examples[k], []) for k in examples.keys()}
+
+  拼接前: [10, 20, 30] + [40, 50] + [60, 70, 80, 90]
+  拼接后: [10, 20, 30, 40, 50, 60, 70, 80, 90]
+
+  第二步：计算能整除 512 的总长度（丢弃末尾零头）
+  total_len = (len(concatenated["input_ids"]) // block_size) * block_size
+
+  比如总共 1500 个 token → 1500 // 512 * 512 = 1024（丢弃最后 476 个）
+
+  第三步：按 512 等长切块
+  result = {
+      k: [t[i:i+block_size] for i in range(0, total_len, block_size)]
+      for k, t in concatenated.items()
+  }
+
+  [10, 20, ...(共512个)] [30, 40, ...(共512个)]  ← 每块刚好 512
+
+  第四步：labels = input_ids
+  result["labels"] = result["input_ids"].copy()
+
+  这就是因果语言模型（CLM）的训练方式：输入 [A, B, C]，标签也是 [A, B, C]，训练时框架会自动错位，让模型学习：
+
+  看到 A → 预测 B
+  看到 A,B → 预测 C
+  labels = input_ids 就是告诉模型"你的预测目标就是输入序列本身"，这是自回归语言模型训练的标准写法。错一位进行标注。
+  ---
+  4. 执行流水线
+
+  tokenized = dataset.map(tokenize, batched=True, remove_columns=["text"])
+  lm_dataset = tokenized.map(group_texts, batched=True)
+
+  两步 .map() 串起来：
+
+  原始文本 → tokenize → 一堆不等长的 token 序列
+          → group_texts → 等长的 512 块，可以直接喂给模型训练
+
+ 对，lm_dataset 就是最终处理好的训练数据，每条数据都是 512 长度的 token 块。
+
+  它里面长什么样
+
+  lm_dataset["train"][0]
+  # {
+  #     "input_ids":      [1024, 587, 234, ..., 9102],   ← 512个token
+  #     "attention_mask":  [1, 1, 1, ..., 1],              ← 512个1（全有效，无padding）
+  #     "labels":         [1024, 587, 234, ..., 9102],   ← 和 input_ids 一样
+  # }
+
+  训练时框架自动做的事
+
+  你给模型的 input_ids 和 labels 是一样的，但 Hugging Face 的 Trainer 内部会自动错位一位：
+
+  input:  [A, B, C, D, E]     ← 模型看到的
+  labels:    [B, C, D, E, _]  ← 模型要预测的
+
+  即：
+  看到 A → 预测 B
+  看到 A,B → 预测 C
+  看到 A,B,C → 预测 D
+  ...
+
+  所以你不用自己手动错位，写 labels = input_ids.copy() 就行。
+  ---
+  整体流程图
+
+  ["短文1", "短文2", "短文3", ...]           ← 原始维基百科文本
+            ↓ tokenize
+  [[12,34], [56,78,90], [11,22,33], ...]    ← 不等长 token 序列
+            ↓ 拼接
+  [12,34,56,78,90,11,22,33,...]             ← 一条长链
+            ↓ 切成 512 块
+  [[block_1 (512)], [block_2 (512)], ...]   ← 等长，无浪费，直接训练
+
+  核心思想：不浪费任何一个 token，把碎片文本拼满再切块。
+
+#### 数据指令微调sft
+这个模板有些简单     PROMPT_TEMPLATE = """Below is an instruction. Write a response.
+  ┌────────────┬──────────────────────────────┬──────────────────────────────────┐
+  │            │ 预训练 prepare_pretrain_data │    指令微调 prepare_sft_data     │
+  ├────────────┼──────────────────────────────┼──────────────────────────────────┤
+  │ 数据       │ 纯文本，随便拼               │ 结构化的指令-回答对              │
+  ├────────────┼──────────────────────────────┼──────────────────────────────────┤
+  │ 模型学到的 │ "语言是怎么组织的"           │ "用户问什么，我该怎么答"         │
+  ├────────────┼──────────────────────────────┼──────────────────────────────────┤
+  │ 类比       │ 让小孩大量阅读               │ 教小孩"别人问你问题时要怎么回答" │
+  └────────────┴──────────────────────────────┴──────────────────────────────────┘
+
+  如果你要用 Qwen2 微调
+
+  最好换成 Qwen2 自带的 ChatML 模板，这样微调后的模型和原始模型的对话格式一致，推理时直接用
+  tokenizer.apply_chat_template() 就行：
+
+  messages = [
+      {"role": "system", "content": "你是一个助手"},
+      {"role": "user", "content": "写一首诗"},
+  ]
+  text = tokenizer.apply_chat_template(messages, tokenize=False)
+
+  这个代码用简单模板是为了让你看懂原理，生产环境要换成对应模型的官方模板。
+
+format_prompt方法
+  dataset = load_dataset("tatsu-lab/alpaca", split="train[:5000]")
+  处理前（一条数据）:
+  {
+    "instruction": "翻译成英文",
+    "input": "你好",
+    "output": "Hello"
+  }
+
+  处理后（一条数据）:
+  {
+    "input_ids":      [8023, 241, ..., 151643, 151643],  ← 512个token
+    "attention_mask":  [1, 1, ..., 0, 0],                 ← 有效=1, padding=0
+    "labels":         [8023, 241, ..., 151643, 151643]   ← 同 input_ids
+  }
+
+  具体对比
+
+  ┌──────────┬───────────────────────────┬─────────────────────────────────┐
+  │          │       2a 预训练数据       │         2b 指令微调数据         │
+  ├──────────┼───────────────────────────┼─────────────────────────────────┤
+  │ 输入数据 │ 纯文本（维基百科文章）    │ instruction/input/output 三元组 │
+  ├──────────┼───────────────────────────┼─────────────────────────────────┤
+  │ 数据处理 │ 拼接 + 切块（无 padding） │ 每条独立 + padding 到 512       │
+  ├──────────┼───────────────────────────┼─────────────────────────────────┤
+  │ 学习目标 │ 预测下一个词              │ 看到指令，生成正确回答          │
+  ├──────────┼───────────────────────────┼─────────────────────────────────┤
+  │ 数据量   │ 通常很大（TB 级）         │ 相对小（几千~几万条）           │
+  ├──────────┼───────────────────────────┼─────────────────────────────────┤
+  │ 训练成本 │ 非常高（几周~几个月）     │ 低（几小时~几天）               │
+  └──────────┴───────────────────────────┴─────────────────────────────────┘
+
+  训练后的效果区别
+
+  只做完 2a 预训练的模型：
+
+  输入: "中国的首都是"
+  输出: "中国的首都是北京，位于华北平原，面积16410平方公里..."  ← 会续写
+
+  输入: "请帮我翻译：你好"
+  输出: "请帮我翻译：你好。这句话在英语中..."  ← 还是续写，不会回答
+
+  再做完 2b 指令微调后：
+
+  输入: "请帮我翻译：你好"
+  输出: "Hello"  ← 听懂了指令，直接回答
+
+### 代码阶段3
+逐块拆解这段预训练代码
+  1. 准备数据
+  lm_dataset = prepare_pretrain_data()
+  调用之前 2a 的函数，拿到处理好的 512 等长 token 块。
+  ---
+  2. 加载模型
+  model = AutoModelForCausalLM.from_pretrained(
+      MODEL_NAME,                    # Qwen2-0.5B
+      torch_dtype=torch.bfloat16,    # 用 bf16 精度加载，省一半显存
+      device_map="auto"              # 自动分配到 GPU
+  )
+  - AutoModelForCausalLM — 自动加载因果语言模型（Causal LM，就是从左到右预测下一个词的模型）
+  - bfloat16 — 每个参数 2 字节而不是 4 字节（float32），显存减半
+
+ ---
+  3. 显存估算（注释部分）
+
+  模型参数:  0.5B × 2 bytes = 1GB
+  优化器:    0.5B × 8 bytes = 4GB    ← Adam 要存 m 和 v 两个状态
+  梯度:      0.5B × 2 bytes = 1GB
+                            合计 ≈ 6GB
+  3080 总共 10GB，剩 4GB 给激活值
+
+  所以 batch_size 不能太大，设成 2。
+
+  ---
+  4. 训练参数 TrainingArguments
+
+  显存控制：
+
+  per_device_train_batch_size=2,       # 每步只处理 2 条
+  gradient_accumulation_steps=8,       # 积累 8 步再更新参数
+  等效 batch_size = 2 × 8 = 16      ← 效果等于一次处理 16 条，但显存只占 2 条的量
+  gradient_checkpointing=True,         # 不保存中间激活值，需要时重新算，省显存但慢 20%
+
+  不用梯度累积: 一次吃 16 条 → 显存爆了
+  用梯度累积:   分 8 次，每次吃 2 条，攒够 8 次再更新 → 效果一样，显存够用
+
+  混合精度：
+
+  bf16=True,    # 计算用 bf16，省显存又快
+
+  优化器：
+
+  optim="adamw_torch_fused",    # fused 版 Adam，把多个操作合并，更快
+  learning_rate=3e-4,           # 学习率
+  lr_scheduler_type="cosine",   # 余弦衰减：学习率从高到低平滑下降
+  warmup_ratio=0.05,            # 前 5% 步数学习率从 0 慢慢升到 3e-4，防止开始时震荡
+
+  学习率变化:
+       ↗ warmup ↘———— cosine 衰减 ————↘
+  0 → 3e-4                              → ~0
+
+  日志与保存：
+
+  logging_steps=50,       # 每 50 步打印一次 loss
+  save_steps=500,         # 每 500 步保存一次模型
+  save_total_limit=2,     # 最多保留 2 个存档，防止硬盘爆满
+
+  ---
+  5. 创建 Trainer 并训练
+
+  trainer = Trainer(
+      model=model,
+      args=training_args,
+      train_dataset=lm_dataset["train"],          # 训练集
+      eval_dataset=lm_dataset["validation"],      # 验证集
+      data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
+      # mlm=False → 因果语言模型，不是 BERT 那种掩码语言模型
+  )
+
+  trainer.train()                                          # 开始训练
+  trainer.save_model(os.path.join(OUTPUT_DIR, "pretrain/final"))  # 保存最终模型
+
+  ---
+  整体流程
+
+  WikiText-2 纯文本
+        ↓
+  prepare_pretrain_data() 处理成 512 token 块
+        ↓
+  加载 Qwen2-0.5B 模型（bf16）
+        ↓
+  用 Trainer 训练 3 个 epoch
+    - 每步 batch=2，累积 8 步，等效 batch=16
+    - 每 50 步打印 loss
+    - 每 500 步保存模型
+        ↓
+  保存最终模型
+
+  一句话总结：用 Qwen2-0.5B 在 WikiText-2 上做继续预训练，通过梯度累积、bf16、梯度检查点等技巧让 3080 10GB 显存够用。
+
+#### 从算法得角度理解为什么存这些参数
+  1. 模型参数（1GB）—— 模型本身
+  模型就是一个函数 y = f(x)，这个函数由大量权重矩阵组成： 
+  输入 token → [Embedding矩阵] → [Attention的Q,K,V矩阵] → [FFN矩阵] → ... → 输出概率
+  这些矩阵里的每个数字就是一个参数。0.5B 个参数必须常驻显存，因为前向和反向都要用。
+  2. 梯度（1GB）—— 反向传播的产物
+  反向传播的目的是求：每个参数对 loss 的影响有多大？
+  梯度 = ∂Loss / ∂参数
+  每个参数都有一个对应的梯度值，所以梯度的数量 = 参数的数量。
+  3. 完整的 Adam 更新公式 4GB
+  m: 0.5B × 4 bytes = 2GB 
+  v: 0.5B × 4 bytes = 2GB
+  合计:                4GB
+  每一步训练：
+  m = β1 * m + (1-β1) * 梯度       # 方向：往哪走
+  v = β2 * v + (1-β2) * 梯度²      # 步长：走多大步
+
+  参数 = 参数 - 学习率 × m / (√v + ε)
+  方向 /  步长调节
+
+  FFN 的计算
+  hidden = input × W1 + b1   # W1 是参数
+  output = ReLU(hidden) × W2 + b2   # W2 是参数
+  训练时，Adam 的工作就是更新这些 W1、W2（以及 Attention 的 Q、K、V 矩阵等所有参数）
+  
+  adam理解：
+  m：越近的梯度权重越大，越远的梯度"遗忘"越多。β1=0.9\beta_1=0.9 β1=0.9 意味着大约记住了 最近 10 步的梯度信息。
+  v实际含义： 梯度平方的"平滑历史均值"，估计梯度的波动幅度（近似方差）。 β2=0.999\beta_2=0.999 β2​=0.999 意味着大约记住了 最近 1000 步的梯度平方信息。
+  m和v的区别是平方的区别，v的平方没有位置信息，只有幅度信息mt"应该往这个方向走" 根号下vt"但这个方向历史上很颠簸，步子要迈小一点"
+
+### 代码阶段4
+
+### 代码阶段5
+
+### 代码阶段6
+
+### 代码阶段7
+
+### 代码阶段8
+
 

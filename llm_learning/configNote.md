@@ -4,7 +4,9 @@ https://www.yuque.com/nicaisadasd/fwextu/ekk2q8nrf3ow4k9q
 征集买家秀晒图活动，评价20字以上+2张效果图，赠送一张Claude Code Max 请求【100-200次】59a7fb4943a24d97b4fba76db2940e66
 q邮箱+大写短密码
 
-https://claude888.creativeai.work karinlinna 小短字母 1天
+car :
+karinlinna 小短字母 1天
+https://claude.hk.cn/pastel/#/claude-carlist
 
 https://claudeonline.top/list 15天 
 

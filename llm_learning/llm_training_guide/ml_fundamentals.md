@@ -252,6 +252,7 @@ $$w_{\text{new}} = 0.05 - 0.1 \times (2 \times 0.1 \times 0.05) = 0.05 - 0.001 =
 | 推力 | 恒定（不管 $w$ 多小都是 $\lambda$） | 和 $w$ 成正比（越小越弱） |
 | 类比 | 恒定摩擦力（直接停住） | 弹簧（越近拉力越弱） |
 | 结果 | 能精确等于 0 | 无限趋近 0 但到不了 |
+
 ---
 
 ## 五、线性回归（Linear Regression）
@@ -485,6 +486,32 @@ $$L = -\frac{1}{n} \sum_{i=1}^{n} \left[ y \cdot \log(p) + (1-y) \cdot \log(1-p)
 
 为什么不用 MSE？因为 Sigmoid + MSE 的损失曲面不是凸的，梯度下降容易卡在局部最小值。交叉熵 + Sigmoid 是凸的，保证收敛到全局最优。
 
+### 交叉熵的推导来源
+
+交叉熵来自**最大似然估计（MLE）**：
+
+1. 假设样本服从伯努利分布：$P(y|\hat{y}) = \hat{y}^y(1-\hat{y})^{1-y}$
+2. 对所有样本取似然函数：$\prod_i \hat{y}_i^{y_i}(1-\hat{y}_i)^{1-y_i}$
+3. 取对数得到对数似然：$\sum_i [y_i\log\hat{y}_i + (1-y_i)\log(1-\hat{y}_i)]$
+4. 加负号（最大化似然 → 最小化损失），就得到了交叉熵公式
+
+本质上，**最小化交叉熵 = 最大化模型对正确标签的预测概率**。
+
+### 从二分类到多分类
+
+在二分类交叉熵中，$y$ 只能是 0 或 1，因为它对应的是二分类问题（是/否、正/负）。
+
+如果标签不止两类，就要用**多分类交叉熵（Categorical Cross-Entropy）**：
+
+$$L = -\sum_{c=1}^{C} y_c \log(\hat{y}_c)$$
+
+其中：
+- $C$：类别总数
+- $y_c$：one-hot 编码（正确类别为 1，其余为 0）
+- $\hat{y}_c$：模型对第 $c$ 类的预测概率（通常经过 softmax）
+
+其实二分类交叉熵就是 $C=2$ 时的特例。
+
 ### 梯度推导
 
 $$\frac{\partial L}{\partial w} = \frac{1}{n} X^T(p - y)$$
@@ -589,7 +616,68 @@ Epoch  800 | Loss: 0.0551 | Accuracy: 99.50%
 
 ### 多分类扩展 → Softmax 回归
 
-把 Sigmoid 换成 Softmax，交叉熵变成多分类版本，就是 fundationNote.md 里讲过的 Softmax。
+把 Sigmoid 换成 Softmax，交叉熵变成多分类版本。这是二分类 → 多分类的自然推广：
+
+**从二分类说起：** Sigmoid 用于二分类（0 或 1），它把一个数压缩到 $(0, 1)$，表示"是正类的概率"：
+
+$$\sigma(z) = \frac{1}{1+e^{-z}}$$
+
+对应的损失函数是二分类交叉熵：
+
+$$L = -[y \log(\hat{p}) + (1-y)\log(1-\hat{p})]$$
+
+#### 二分类交叉熵的 MLE 推导
+
+**第一步：建立概率模型**
+
+逻辑回归假设 $\hat{p} = P(y=1 | x) = \sigma(z)$，那么：
+- $y=1$ 的概率是 $\hat{p}$
+- $y=0$ 的概率是 $1-\hat{p}$
+
+用一个式子把两种情况合并：
+
+$$P(y|x) = \hat{p}^{y} \cdot (1-\hat{p})^{1-y}$$
+
+验证：当 $y=1$ 时得到 $\hat{p}$，当 $y=0$ 时得到 $1-\hat{p}$。✓
+
+**第二步：最大似然——希望概率越大越好**
+
+有 $n$ 个独立样本，联合似然是：
+
+$$L(\theta) = \prod_{i=1}^{n} \hat{p}_i^{y_i} \cdot (1-\hat{p}_i)^{1-y_i}$$
+
+我们想最大化这个式子（让模型尽量"猜对"）。
+
+**第三步：取对数（log-likelihood）**
+
+连乘很难优化，取 $\log$ 变连加：
+
+$$\log L(\theta) = \sum_{i=1}^{n} \left[ y_i \log \hat{p}_i + (1-y_i) \log(1-\hat{p}_i) \right]$$
+
+**第四步：最大化 → 最小化（加负号）**
+
+机器学习习惯最小化损失函数，所以加个负号：
+
+$$\boxed{L = -\left[ y \log \hat{p} + (1-y) \log(1-\hat{p}) \right]}$$
+
+这就是二分类交叉熵！
+
+#### 当 $K=2$ 时，Softmax 等价于 Sigmoid
+
+两个类别，分别有得分 $z_1$ 和 $z_2$，Softmax 给出：
+
+$$P(y=1) = \frac{e^{z_1}}{e^{z_1} + e^{z_2}}, \quad P(y=0) = \frac{e^{z_2}}{e^{z_1} + e^{z_2}}$$
+
+化简 $P(y=1)$，分子分母同除以 $e^{z_2}$：
+
+$$P(y=1) = \frac{e^{z_1}/e^{z_2}}{(e^{z_1}+e^{z_2})/e^{z_2}} = \frac{e^{z_1-z_2}}{1 + e^{z_1-z_2}}$$
+
+令 $z = z_1 - z_2$（两个得分的差值），就得到：
+
+$$P(y=1) = \frac{e^z}{1+e^z} = \frac{1}{1+e^{-z}}$$
+
+这正好就是 Sigmoid！✓
+
 
 ---
 
@@ -604,6 +692,10 @@ Epoch  800 | Loss: 0.0551 | Accuracy: 99.50%
 - **信息熵（ID3）：** $H(D) = -\sum p_i \cdot \log_2(p_i)$，衡量数据集的混乱程度
 - **信息增益：** $IG = H(D) - H(D|\text{特征A})$，选择使信息增益最大的特征
 - **基尼系数（CART）：** $Gini = 1 - \sum p_i^2$，越小越纯净
+
+信息熵在问：“我猜下一个样本的类别，平均会有多惊讶？”（惊讶越大，越混乱）
+信息增益在问：“按这个特征分类后，我的惊讶度降低了多少？”（降低越多，特征越好）
+基尼系数在问：“我随便抓两个样本，它们不是一伙的概率有多大？”（概率越大，越混乱）
 
 ### 构建过程
 
@@ -652,6 +744,42 @@ model.fit(X_train, y_train)
 print(model.feature_importances_)  # 特征重要性
 ```
 
+### 完整代码示例：乳腺癌分类
+
+```python
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+
+# 第一步：准备数据
+data = load_breast_cancer()
+X = data.data      # 病人的特征（肿瘤半径、纹理等 30 个指标）
+y = data.target    # 确诊结果（0=恶性，1=良性）
+
+# 80% 训练集，20% 测试集
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# 第二步：建立随机森林模型（100 棵决策树）
+forest_model = RandomForestClassifier(n_estimators=100, random_state=42)
+
+# 第三步：训练
+forest_model.fit(X_train, y_train)
+
+# 第四步：预测
+predictions = forest_model.predict(X_test)
+
+# 第五步：评估
+accuracy = accuracy_score(y_test, predictions)
+print(f”随机森林的准确率: {accuracy * 100:.2f}%”)
+```
+
+**`fit()` 背后发生了什么？**
+
+1. **Bagging（样本随机）：** 循环 100 次，每次从训练集中有放回地随机抽取样本，分配给一棵树。
+2. **特征随机：** 每棵树在每个节点，从 30 个特征中只随机选取约 $\sqrt{30} \approx 5.4$ 个特征。
+3. **寻找最纯净的划分：** 在选出的特征中，计算信息增益或基尼系数，选最优特征和阈值分裂。
+4. **投票：** 预测时，100 棵树同时给出结论，少数服从多数。
 **优缺点：**
 - ✅ 抗过拟合能力强，可处理高维数据，能评估特征重要性
 - ❌ 模型较大，可解释性弱于单棵决策树，训练较慢

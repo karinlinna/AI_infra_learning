@@ -245,6 +245,54 @@ $$w_{\text{new}} = 0.05 - 0.1 \times (2 \times 0.1 \times 0.05) = 0.05 - 0.001 =
 越小推力越弱，永远在趋近 0，但到不了
 ```
 
+### 损失函数与梯度下降的关系
+
+这其实就是两步：**先定义目标，再优化它。**
+
+**第一步：定义"要最小化什么"**
+
+$$L_{\text{total}} = L_{\text{原始}} + \lambda \sum w_i^2$$
+
+这只是在说："我希望模型既拟合数据好（$L_{\text{原始}}$ 小），又参数别太大（$\sum w_i^2$ 小）"。
+
+它就是一个**目标**，还没涉及怎么优化。
+
+**第二步：用梯度下降去最小化它**
+
+梯度下降是通用的优化方法，不管你的损失函数长什么样，更新规则都是：
+
+$$w = w - \eta \cdot \frac{\partial L_{\text{total}}}{\partial w}$$
+
+关键就在于：**$L$ 换了，梯度也跟着换。**
+
+**把两步串起来：**
+
+没有正则化时，$L_{\text{total}} = L_{\text{原始}}$：
+
+$$\frac{\partial L_{\text{total}}}{\partial w} = \frac{\partial L_{\text{原始}}}{\partial w}$$
+
+加了 L2 正则化后，$L_{\text{total}} = L_{\text{原始}} + \lambda \sum w_i^2$：
+
+$$\frac{\partial L_{\text{total}}}{\partial w} = \frac{\partial L_{\text{原始}}}{\partial w} + \underbrace{2\lambda w}_{\text{多出来的}}$$
+
+代入更新公式：
+
+$$w = w - \eta \cdot \left(\frac{\partial L_{\text{原始}}}{\partial w} + 2\lambda w\right)$$
+
+**数字例子：**
+
+假设 $w = 3$，$\eta = 0.1$，$\lambda = 0.1$，原始梯度 $= 2$
+
+没有正则化：
+
+$$w = 3 - 0.1 \times 2 = 2.8$$
+
+有 L2 正则化：
+
+$$w = 3 - 0.1 \times (2 + 2 \times 0.1 \times 3) = 3 - 0.1 \times 2.6 = 2.74$$
+
+多减了一点，因为正则化在额外地把 $w$ 往小拉。
+
 **直觉类比：**
 
 | | L1 | L2 |

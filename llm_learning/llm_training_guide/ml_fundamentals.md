@@ -1063,11 +1063,50 @@ $C$ 是惩罚参数：
 - $C$ 大 → 不容忍误分类 → 间隔小，可能过拟合
 - $C$ 小 → 容忍一些误分类 → 间隔大，更泛化
 
+**为什么 $C$ 大就是"不容忍误分类"？**
+
+优化目标 $\min \frac{1}{2}\|w\|^2 + C\sum_i \xi_i$ 其实是**两个目标在拔河**：
+
+| 项 | 目标 | 效果 |
+|:--|:--|:--|
+| $\frac{1}{2}\|w\|^2$ | 最小化 → 间隔越大 | 模型越简单、越泛化 |
+| $C\sum_i \xi_i$ | 最小化 → 误分类越少 | 模型越贴合训练数据 |
+
+$C$ 就是**裁判**，决定更偏向哪边。因为 $C$ 是 $\sum_i \xi_i$（误分类总量）前面的乘数，举个数字例子：假设某个样本被误分类了，$\xi_i = 0.5$
+
+- $C = 1000$ 时：该样本对总损失的贡献 $= 1000 \times 0.5 = 500$（代价巨大，优化器必须拼命消除它）
+- $C = 0.01$ 时：贡献 $= 0.01 \times 0.5 = 0.005$（几乎无所谓，优化器可以忽略它）
+
+所以 $C$ 越大，每一个误分类样本在损失函数里的"权重"就越重，优化器就越"不容忍"误分类——为了让每个点都分对，不惜让 $\|w\|$ 变大（间隔变小），决策边界会扭曲去迎合每个训练样本，导致过拟合。反之 $C$ 越小，优化器更专注于减小 $\|w\|$（间隔变大），允许一些点分错，模型更泛化。
+
 ### Hinge Loss（合页损失）
 
-SVM 的损失函数可以写成：
+Hinge Loss 不是"凭空设计"的，而是从软间隔 SVM 的约束优化问题**直接改写**过来的，本质是同一个东西换了个写法。
 
-$$L = \frac{1}{n} \sum_{i=1}^{n} \max\left(0,\; 1 - y_i(w \cdot x_i + b)\right) + \lambda \|w\|^2$$
+**第一步：从约束优化出发**
+
+软间隔 SVM 的原始形式：
+
+$$\min \frac{1}{2}\|w\|^2 + C\sum_i \xi_i \quad \text{s.t.} \quad y_i(w \cdot x_i + b) \geq 1 - \xi_i, \quad \xi_i \geq 0$$
+
+**第二步：$\xi_i$ 到底等于多少？**
+
+约束条件要求 $\xi_i \geq 0$ 且 $\xi_i \geq 1 - y_i(w \cdot x_i + b)$。为了最小化 $\sum \xi_i$，$\xi_i$ 应该取**最小的合法值**：
+
+$$\xi_i = \max\left(0, \; 1 - y_i(w \cdot x_i + b)\right)$$
+
+- 分对了且在间隔外：$y_i(w \cdot x_i + b) \geq 1$，所以 $1 - y_i(\cdots) \leq 0$，取 $\max$ 后 $\xi_i = 0$
+- 分错了或在间隔内：$y_i(w \cdot x_i + b) < 1$，$\xi_i = 1 - y_i(\cdots) > 0$
+
+**第三步：代回去，约束消失了**
+
+把 $\xi_i$ 代回原式，约束条件已经被 $\max$ 吸收了，变成**无约束**优化：
+
+$$\min \frac{1}{2}\|w\|^2 + C\sum_i \max\left(0, \; 1 - y_i(w \cdot x_i + b)\right)$$
+
+除以 $n$ 并令 $\lambda = \frac{1}{2nC}$，就得到了最终的 Hinge Loss 形式：
+
+$$L = \frac{1}{n}\sum_{i=1}^{n} \max\left(0, \; 1 - y_i(w \cdot x_i + b)\right) + \lambda\|w\|^2$$
 
 $$\underbrace{\qquad\qquad\qquad\qquad\qquad}_{\text{hinge loss}} \quad + \quad \underbrace{\qquad}_{\text{正则化}}$$
 
@@ -1076,6 +1115,26 @@ $$\underbrace{\qquad\qquad\qquad\qquad\qquad}_{\text{hinge loss}} \quad + \quad 
 - $y_i(w \cdot x_i + b) < 1$ → 在间隔内或分类错误 → 损失 $= 1 - y_i f(x_i)$
 
 ### 手动实现思路（用梯度下降解 Hinge Loss 版本）
+
+**为什么 $y_i(w \cdot x_i + b) \geq 1$ 表示"分对了"？**
+
+SVM 标签是 $+1$ 和 $-1$。分对时 $y_i$ 和 $w \cdot x_i + b$ 同号，乘积为正；分错时异号，乘积为负。而 $\geq 1$ 比 $> 0$ 更严格，意味着不仅分对了，还足够自信（在间隔边界之外）。
+
+**梯度怎么来的？**
+
+对单个样本，损失为 $L_i = \max(0, \; 1 - y_i(w \cdot x_i + b)) + \lambda\|w\|^2$，分两种情况求偏导：
+
+**情况一：** $y_i(w \cdot x_i + b) \geq 1$（分对了，$\max$ 取 $0$，hinge 部分消失）
+
+$$\frac{\partial L_i}{\partial w} = 2\lambda w, \quad \frac{\partial L_i}{\partial b} = 0$$
+
+**情况二：** $y_i(w \cdot x_i + b) < 1$（$\max$ 取 $1 - y_i(w \cdot x_i + b)$，对 $w$、$b$ 求导）
+
+$$\frac{\partial L_i}{\partial w} = 2\lambda w - y_i x_i, \quad \frac{\partial L_i}{\partial b} = -y_i$$
+
+然后沿梯度反方向更新：$w = w - \eta \cdot dw$，$b = b - \eta \cdot db$
+
+**伪代码：**
 
 ```
 标签必须是 +1 和 -1（不是 0 和 1）

@@ -498,6 +498,74 @@ $\lambda$ 越大，参数被压得越小，模型越简单。
 
 虽然名字里有"回归"，但它是一个分类算法。
 
+Sigmoid + MSE 的公式非常直观，就是把 Sigmoid 的预测输出直接代入到 MSE 的损失函数中。
+
+我们可以分为单样本和**多样本（整个数据集）**来表示：
+
+### 基础组件公式
+
+线性层输出：
+
+$$z = w^T x + b$$
+
+Sigmoid 激活函数（预测值 $\hat{y}$）：
+
+$$\hat{y} = \sigma(z) = \frac{1}{1 + e^{-z}} = \frac{1}{1 + e^{-(w^T x + b)}}$$
+
+真实标签：$y$（通常为 0 或 1）
+
+### 单个样本的 Sigmoid + MSE 损失公式
+
+为了求导方便，通常会在 MSE 前面加一个 $\frac{1}{2}$（或者不加，本质一样）：
+
+$$L = \frac{1}{2}(y - \hat{y})^2$$
+
+把 Sigmoid 展开代入后，公式为：
+
+$$L = \frac{1}{2}\left(y - \frac{1}{1 + e^{-(w^T x + b)}}\right)^2$$
+
+### N 个样本的全局代价函数（Cost Function）
+
+对于包含 $N$ 个样本的数据集，整体的损失函数是所有样本损失的平均值：
+
+$$J(w, b) = \frac{1}{N} \sum_{i=1}^{N} \left(y_i - \frac{1}{1 + e^{-(w^T x_i + b)}}\right)^2$$
+
+### 为什么这个公式会导致”非凸”和”容易卡死”？（数学证明）
+
+这个现象在数学上可以通过求导完美解释。我们来看上述损失函数对权重 $w$ 的梯度（导数）：
+
+根据链式法则求导 $\frac{\partial L}{\partial w} = \frac{\partial L}{\partial \hat{y}} \cdot \frac{\partial \hat{y}}{\partial z} \cdot \frac{\partial z}{\partial w}$：
+
+$$\frac{\partial L}{\partial \hat{y}} = (\hat{y} - y)$$
+
+$$\frac{\partial \hat{y}}{\partial z} = \sigma'(z) = \hat{y}(1 - \hat{y}) \quad \text{（Sigmoid 函数特有的导数性质）}$$
+
+$$\frac{\partial z}{\partial w} = x$$
+
+把它们乘起来，Sigmoid + MSE 的梯度公式为：
+
+$$\frac{\partial L}{\partial w} = (\hat{y} - y) \cdot \hat{y}(1 - \hat{y}) \cdot x$$
+
+**致命问题就在 $\hat{y}(1 - \hat{y})$ 这一项上（梯度消失）：**
+
+假设真实标签 $y = 1$。如果模型预测完全错误，比如 $\hat{y} = 0.0001$（非常确信是负类）。
+
+此时 $\hat{y}(1 - \hat{y}) \approx 0.0001 \times 1 \approx 0$，导致总梯度 $\approx 0$。
+
+**结果：** 模型错得越离谱，梯度反而越趋近于 0，参数几乎不更新，模型就”卡死”在局部最小值或平缓地带（非凸曲面造成的平原）了。
+
+### 为什么交叉熵（Cross-Entropy）更好？
+
+如果使用 Sigmoid + Binary Cross-Entropy (BCE)，损失公式为：
+
+$$L = -\left[y \log(\hat{y}) + (1 - y) \log(1 - \hat{y})\right]$$
+
+神奇的是，它的梯度公式化简后变成了极其干净的：
+
+$$\frac{\partial L}{\partial w} = (\hat{y} - y) \cdot x$$
+
+那个惹祸的 $\hat{y}(1 - \hat{y})$ 被对数求导巧妙地抵消掉了！这就保证了只要预测值 $\hat{y}$ 和真实值 $y$ 有差距，梯度就永远存在（且差值越大，梯度越大，学得越快），同时构成了完美的凸优化曲面。
+
 ### 核心思想
 
 线性回归的输出范围是 $(-\infty, +\infty)$，不适合表示概率。

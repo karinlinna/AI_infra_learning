@@ -103,6 +103,8 @@ python data/build_dataset.py \
 
 ### Step 3: LoRA 微调
 
+> 训练产物默认保存到 AutoDL 服务器的 `/root/data/` 目录下，便于持久化存储。
+
 ```bash
 cd train
 
@@ -110,20 +112,20 @@ cd train
 python sft_lora.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train-data ../data/train.jsonl \
-    --output-dir ./output/jx3_lora
+    --output-dir /root/data/jx3_lora
 
 # 显存不够？使用 QLoRA 4bit 量化（12GB 即可）
 python sft_lora.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train-data ../data/train.jsonl \
     --use-4bit \
-    --output-dir ./output/jx3_lora
+    --output-dir /root/data/jx3_lora
 
 # 或者用更小的模型
 python sft_lora.py \
     --model Qwen/Qwen2.5-3B-Instruct \
     --train-data ../data/train.jsonl \
-    --output-dir ./output/jx3_lora
+    --output-dir /root/data/jx3_lora
 ```
 
 训练参数说明：
@@ -145,8 +147,8 @@ python sft_lora.py \
 # 将 LoRA 合并到基座，生成独立模型（部署更方便）
 python merge_lora.py \
     --base-model Qwen/Qwen2.5-7B-Instruct \
-    --lora-path ./output/jx3_lora \
-    --output-dir ./output/jx3_merged
+    --lora-path /root/data/jx3_lora \
+    --output-dir /root/data/jx3_merged
 ```
 
 也可以跳过合并，推理时直接加载 base + LoRA adapter。
@@ -157,12 +159,12 @@ python merge_lora.py \
 cd inference
 
 # 使用合并后的模型
-python server.py --model ../train/output/jx3_merged
+python server.py --model /root/data/jx3_merged
 
 # 或使用 base + LoRA adapter
 python server.py \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --lora ../train/output/jx3_lora
+    --lora /root/data/jx3_lora
 ```
 
 测试 API：

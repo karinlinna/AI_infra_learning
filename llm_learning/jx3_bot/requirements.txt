@@ -1,0 +1,25 @@
+# 模型训练
+torch>=2.0
+transformers>=4.40
+peft>=0.10
+trl>=0.8
+datasets
+accelerate
+bitsandbytes
+
+# 推理服务
+fastapi
+uvicorn
+sse-starlette
+
+# 数据采集
+requests
+beautifulsoup4
+lxml
+
+# 联网搜索
+duckduckgo-search
+
+# QQ 机器人
+nonebot2
+nonebot-adapter-onebot

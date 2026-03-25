@@ -34,6 +34,8 @@ https://zhuanlan.zhihu.com/p/2000850539936765122 openclaw
   pip install torch transformers
   cd /Users/lijialin/Work/Github/robotlearning/llm_learning
 
+ 
+
 ## 自学视频
 https://space.bilibili.com/271305784/lists/1827462?type=season
 https://huggingface.co/ q邮箱

@@ -169,8 +169,8 @@ def main():
         save_total_limit=3,
         eval_strategy="steps" if val_dataset else "no",
         eval_steps=100 if val_dataset else None,
-        max_seq_length=args.max_seq_len,
         report_to="none",
+        max_length=args.max_seq_len,
         seed=42,
     )
 

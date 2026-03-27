@@ -1,6 +1,6 @@
 # 剑网三萌新问答机器人
 
-基于 **Qwen2.5-7B-Instruct** 微调的剑网三游戏问答助手，支持联网搜索，可部署为 QQ 机器人。
+基于 **Qwen2.5-14B-Instruct** 微调的剑网三游戏问答助手，支持联网搜索，可部署为 QQ 机器人。
 
 ## 架构概览
 
@@ -13,7 +13,7 @@
                                           ┌──────────┼──────────┐
                                           ▼                      ▼
                                    ┌─────────────┐     ┌───────────────┐
-                                   │ Qwen2.5-7B  │     │ DuckDuckGo    │
+                                   │ Qwen2.5-14B │     │ DuckDuckGo    │
                                    │ + LoRA 微调  │     │ 联网搜索       │
                                    └─────────────┘     └───────────────┘
 ```
@@ -28,7 +28,7 @@ jx3_bot/
 │   ├── build_dataset.py           # 数据清洗 + AI 生成 Q&A → JSONL
 │   └── raw/                       # 原始爬取数据存放
 ├── train/                         # 模型训练
-│   ├── sft_lora.py                # LoRA 微调 Qwen2.5-7B
+│   ├── sft_lora.py                # LoRA 微调 Qwen2.5-14B
 │   └── merge_lora.py              # 合并 LoRA 权重到基座模型
 ├── inference/                     # 推理服务
 │   ├── server.py                  # FastAPI REST API（支持流式输出）
@@ -43,8 +43,8 @@ jx3_bot/
 
 | 组件 | 选择 | 说明 |
 |------|------|------|
-| 基座模型 | Qwen2.5-7B-Instruct | 中文能力最强的开源模型 |
-| 微调方式 | LoRA (rank=64) | 24GB 显存可跑，参数高效 |
+| 基座模型 | Qwen2.5-14B-Instruct | 中文能力强，14B 参数量兼顾质量与效率 |
+| 微调方式 | LoRA (rank=32) + QLoRA 4bit | 24GB 显存可跑，参数高效 |
 | 训练框架 | transformers + peft + trl | HuggingFace 生态，成熟稳定 |
 | 推理服务 | FastAPI + uvicorn | 轻量高性能，支持流式 SSE |
 | 联网搜索 | DuckDuckGo Search | 免费，无需 API Key |
@@ -61,9 +61,9 @@ pip install -r requirements.txt
 ```
 
 硬件要求：
-- **LoRA 微调**：NVIDIA GPU，24GB 显存（RTX 3090/4090）
-- **QLoRA 微调**（`--use-4bit`）：12GB 显存即可
-- **推理**：~16GB 显存（bf16 加载 7B 模型）
+- **QLoRA 微调**（`--use-4bit`，推荐）：NVIDIA GPU，24GB 显存（RTX 3090/4090）
+- **LoRA 微调**：40GB+ 显存（A100 40GB/80GB）
+- **推理**：~30GB 显存（bf16 加载 14B 模型），或 ~10GB（int4 量化）
 
 ### Step 1: 数据采集
 
@@ -107,21 +107,20 @@ python data/build_dataset.py --wiki data/raw/wiki_data.json --community data/raw
 ```bash
 cd train
 
-# 标准 LoRA（需要 24GB 显存）
-python sft_lora.py --model Qwen/Qwen2.5-7B-Instruct --train-data ../data/train.jsonl --output-dir /root/autodl-tmp/jx3_lora 
+# QLoRA 4bit（推荐，24GB 显存即可）
+python sft_lora.py --model Qwen/Qwen2.5-14B-Instruct --train-data ../data/train.jsonl --use-4bit --output-dir /root/autodl-tmp/jx3_lora
 
-# 显存不够？使用 QLoRA 4bit 量化（12GB 即可）
+# 标准 LoRA（需要 40GB+ 显存，如 A100）
+python sft_lora.py \
+    --model Qwen/Qwen2.5-14B-Instruct \
+    --train-data ../data/train.jsonl \
+    --output-dir /root/autodl-tmp/jx3_lora
+
+# 显存不够？用更小的模型
 python sft_lora.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train-data ../data/train.jsonl \
-    --use-4bit \
-    --output-dir /root/data/jx3_lora
-
-# 或者用更小的模型
-python sft_lora.py \
-    --model Qwen/Qwen2.5-3B-Instruct \
-    --train-data ../data/train.jsonl \
-    --output-dir /root/data/jx3_lora
+    --output-dir /root/autodl-tmp/jx3_lora
 ```
 
 训练参数说明：
@@ -131,17 +130,17 @@ python sft_lora.py \
 | `--epochs` | 3 | 训练轮数 |
 | `--batch-size` | 2 | 每卡批次大小 |
 | `--grad-accum` | 8 | 梯度累积步数（等效 batch=16） |
-| `--lr` | 2e-4 | 学习率 |
-| `--max-seq-len` | 1024 | 最大序列长度 |
-| `--lora-rank` | 64 | LoRA 秩 |
-| `--lora-alpha` | 128 | LoRA 缩放系数 |
+| `--lr` | 1e-4 | 学习率 |
+| `--max-seq-len` | 2048 | 最大序列长度 |
+| `--lora-rank` | 32 | LoRA 秩 |
+| `--lora-alpha` | 64 | LoRA 缩放系数 |
 | `--use-4bit` | false | 启用 QLoRA 4bit 量化 |
 
 ### Step 4: 合并权重（可选）
 
 ```bash
 # 将 LoRA 合并到基座，生成独立模型（部署更方便），数据放在数据盘                                  
-python merge_lora.py --base-model Qwen/Qwen2.5-7B-Instruct --lora-path /root/autodl-tmp/jx3_lora --output-dir /root/autodl-tmp/jx3_merged      
+python merge_lora.py --base-model Qwen/Qwen2.5-14B-Instruct --lora-path /root/autodl-tmp/jx3_lora --output-dir /root/autodl-tmp/jx3_merged      
 
 查看文件占用：du -sh /root/* /root/.cache /root/.local 2>/dev/null | sort -rh | head -20
 17G     /root/autodl-tmp
@@ -165,7 +164,7 @@ python server.py --model /root/autodl-tmp/jx3_merged
 
 # 或使用 base + LoRA adapter
 python server.py \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-14B-Instruct \
     --lora /root/data/jx3_lora
 ```
 
@@ -237,11 +236,12 @@ python qq_bot.py
 
 | 场景 | 模型 | 方式 | 显存需求 |
 |------|------|------|---------|
+| 训练 | Qwen2.5-14B | QLoRA 4bit | ~24GB |
+| 训练 | Qwen2.5-14B | LoRA bf16 | ~40GB |
 | 训练 | Qwen2.5-7B | LoRA bf16 | ~20GB |
-| 训练 | Qwen2.5-7B | QLoRA 4bit | ~12GB |
-| 训练 | Qwen2.5-3B | LoRA bf16 | ~10GB |
+| 推理 | Qwen2.5-14B | bf16 | ~30GB |
+| 推理 | Qwen2.5-14B | int4 量化 | ~10GB |
 | 推理 | Qwen2.5-7B | bf16 | ~16GB |
-| 推理 | Qwen2.5-7B | int4 量化 | ~6GB |
 
 ## 后续优化方向
 

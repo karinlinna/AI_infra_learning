@@ -11,7 +11,7 @@
     python server.py --model ./output/jx3_merged
 
     # 使用基座 + LoRA adapter
-    python server.py --model Qwen/Qwen2.5-7B-Instruct --lora ./output/jx3_lora
+    python server.py --model Qwen/Qwen2.5-14B-Instruct --lora ./output/jx3_lora
 
     # 测试
     curl -X POST http://localhost:8000/chat \

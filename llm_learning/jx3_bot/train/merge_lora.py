@@ -5,7 +5,7 @@
 
 使用方式：
     python merge_lora.py \
-        --base-model Qwen/Qwen2.5-7B-Instruct \
+        --base-model Qwen/Qwen2.5-14B-Instruct \
         --lora-path ./output/jx3_lora \
         --output-dir ./output/jx3_merged
 """
@@ -19,7 +19,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 def main():
     parser = argparse.ArgumentParser(description="合并 LoRA 权重")
-    parser.add_argument("--base-model", type=str, default="Qwen/Qwen2.5-7B-Instruct")
+    parser.add_argument("--base-model", type=str, default="Qwen/Qwen2.5-14B-Instruct")
     parser.add_argument("--lora-path", type=str, default="./output/jx3_lora")
     parser.add_argument("--output-dir", type=str, default="./output/jx3_merged")
     args = parser.parse_args()

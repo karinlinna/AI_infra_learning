@@ -1,17 +1,19 @@
 """
-LoRA 微调 Qwen2.5-7B-Instruct
+LoRA 微调 Qwen2.5-14B-Instruct
 
-使用 peft + trl 进行参数高效微调，适配 RTX 3090/4090（24GB）。
+使用 peft + trl 进行参数高效微调。
 
 使用方式：
+    # QLoRA 4bit（推荐，24GB 显存即可）
     python sft_lora.py \
-        --model Qwen/Qwen2.5-7B-Instruct \
+        --model Qwen/Qwen2.5-14B-Instruct \
         --train-data ../data/train.jsonl \
         --val-data ../data/val.jsonl \
+        --use-4bit \
         --output-dir ./output/jx3_lora
 
-    # 显存不够可用更小的模型
-    python sft_lora.py --model Qwen/Qwen2.5-3B-Instruct ...
+    # 标准 LoRA（需要 40GB+ 显存，如 A100）
+    python sft_lora.py --model Qwen/Qwen2.5-14B-Instruct ...
 """
 
 import argparse
@@ -52,17 +54,17 @@ def format_messages(example: dict, tokenizer) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="LoRA 微调 Qwen2.5")
-    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-7B-Instruct")
+    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-14B-Instruct")
     parser.add_argument("--train-data", type=str, default="../data/train.jsonl")
     parser.add_argument("--val-data", type=str, default="../data/val.jsonl")
     parser.add_argument("--output-dir", type=str, default="./output/jx3_lora")
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--grad-accum", type=int, default=8)
-    parser.add_argument("--lr", type=float, default=2e-4)
-    parser.add_argument("--max-seq-len", type=int, default=1024)
-    parser.add_argument("--lora-rank", type=int, default=64)
-    parser.add_argument("--lora-alpha", type=int, default=128)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--max-seq-len", type=int, default=2048)
+    parser.add_argument("--lora-rank", type=int, default=32)
+    parser.add_argument("--lora-alpha", type=int, default=64)
     parser.add_argument("--use-4bit", action="store_true", help="使用 4bit 量化 (QLoRA)，进一步节省显存")
     args = parser.parse_args()
 

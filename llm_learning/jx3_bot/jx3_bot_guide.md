@@ -81,13 +81,12 @@ python data/crawl_community.py --output data/raw/community_data.json
 # 方式 A：仅用内置种子数据（快速验证，无需爬虫）
 python data/build_dataset.py --seed-only --output data/train.jsonl
 
-# 方式 B：种子数据 + 爬取数据 + AI 扩充（推荐，需要 Claude API Key）
-python data/build_dataset.py \
-    --wiki data/raw/wiki_data.json \
-    --community data/raw/community_data.json \
-    --api-key sk-xxx \
-    --output data/train.jsonl
+# 方式 B：种子数据 + 爬取数据 + AI 扩充（推荐，需要 Claude API Key）            
+export ANTHROPIC_BASE_URL="https://api.duckcoding.ai" 
+python data/build_dataset.py --wiki data/raw/wiki_data.json --community data/raw/community_data.json --api-key sk- --output data/train.jsonl 
+
 ```
+
 
 训练数据格式（Qwen Chat JSONL）：
 
@@ -109,10 +108,7 @@ python data/build_dataset.py \
 cd train
 
 # 标准 LoRA（需要 24GB 显存）
-python sft_lora.py \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --train-data ../data/train.jsonl \
-    --output-dir /root/data/jx3_lora
+python sft_lora.py --model Qwen/Qwen2.5-7B-Instruct --train-data ../data/train.jsonl --output-dir /root/autodl-tmp/jx3_lora 
 
 # 显存不够？使用 QLoRA 4bit 量化（12GB 即可）
 python sft_lora.py \
@@ -144,11 +140,17 @@ python sft_lora.py \
 ### Step 4: 合并权重（可选）
 
 ```bash
-# 将 LoRA 合并到基座，生成独立模型（部署更方便）
-python merge_lora.py \
-    --base-model Qwen/Qwen2.5-7B-Instruct \
-    --lora-path /root/data/jx3_lora \
-    --output-dir /root/data/jx3_merged
+# 将 LoRA 合并到基座，生成独立模型（部署更方便），数据放在数据盘                                  
+python merge_lora.py --base-model Qwen/Qwen2.5-7B-Instruct --lora-path /root/autodl-tmp/jx3_lora --output-dir /root/autodl-tmp/jx3_merged      
+
+查看文件占用：du -sh /root/* /root/.cache /root/.local 2>/dev/null | sort -rh | head -20
+17G     /root/autodl-tmp
+9.4G    /root/github
+7.8G    /root/miniconda3
+56K     /root/.local
+0       /root/tf-logs
+0       /root/data
+0       /root/autodl-pub
 ```
 
 也可以跳过合并，推理时直接加载 base + LoRA adapter。
@@ -159,7 +161,7 @@ python merge_lora.py \
 cd inference
 
 # 使用合并后的模型
-python server.py --model /root/data/jx3_merged
+python server.py --model /root/autodl-tmp/jx3_merged  
 
 # 或使用 base + LoRA adapter
 python server.py \
@@ -171,14 +173,10 @@ python server.py \
 
 ```bash
 # 普通问答
-curl -X POST http://localhost:8000/chat \
-    -H "Content-Type: application/json" \
-    -d '{"question": "纯阳适合新手吗？"}'
+curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" -d '{"question": "纯阳适合新手吗？"}'
 
 # 涉及最新内容会自动联网搜索
-curl -X POST http://localhost:8000/chat \
-    -H "Content-Type: application/json" \
-    -d '{"question": "最新版本更新了什么？"}'
+curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" -d '{"question": "最新出的门派是什么？有什么技能？"}'
 
 # 健康检查
 curl http://localhost:8000/health

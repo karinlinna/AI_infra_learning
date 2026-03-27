@@ -27,8 +27,9 @@ def main():
     print(f"加载基座模型: {args.base_model}")
     base_model = AutoModelForCausalLM.from_pretrained(
         args.base_model,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         trust_remote_code=True,
+        local_files_only=True,
         device_map="cpu",  # 合并在 CPU 上做，避免显存问题
     )
 

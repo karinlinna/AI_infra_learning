@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import matplotlib.font_manager as fm; fonts = [f.name for f in fm.fontManager.ttflist]; print\\('SimHei found:', 'SimHei' in fonts\\); print\\([f for f in set\\(fonts\\) if 'hei' in f.lower\\(\\) or 'sim' in f.lower\\(\\)]\\)\")"
+    ]
+  }
+}

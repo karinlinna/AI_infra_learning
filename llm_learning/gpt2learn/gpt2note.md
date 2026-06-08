@@ -1000,3 +1000,4 @@ loss = self.loss_function(logits, labels, vocab_size=self.config.vocab_size)
 ```
 
 这条跳跃连接让梯度可以不经过变换直接流回去，从根本上解决了梯度消失问题，使得训练 1000 层网络成为可能。
+

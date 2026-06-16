@@ -1,10 +1,4 @@
 ## claydeapi
-https://www.yuque.com/nicaisadasd/fwextu/ekk2q8nrf3ow4k9q
-《中转api使用claude code教程》
-征集买家秀晒图活动，评价20字以上+2张效果图，赠送一张Claude Code Max 请求【100-200次】59a7fb4943a24d97b4fba76db2940e66
-q邮箱+大写短密码
-
-https://docs.packyapi.com/docs/register/1-register.html https://www.packyapi.com/console/topup packy karinlinna 数字长 这个目前比较好用 https://www.packyapi.com
 
 或者试试dockcoding https://api.duckcoding.ai 
 
@@ -240,9 +234,6 @@ LoRA要不要 DeepSpeed？单卡意义不大，多卡或内存不足时开
 DeepSpeed = 让多台电脑合力搬运一个超重的货物
 Hugging Face下载 = 从应用商店下载一个预装好的AI模型
 LoRA微调 = 给一个通才医生做专科培训，不用从头培养，只教他专科知识
-
-
-
 
 
 

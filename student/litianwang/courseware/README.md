@@ -60,6 +60,7 @@
 ```
 courseware/
 ├── README.md                                  # 本文件（总览 + 学习地图）
+├── lesson_01_career_planning_student.md       # 第1节 学生课件（求职作战地图）
 ├── lesson_02_agent_engineering_teacher.md     # 第2节 教师教案
 ├── lesson_02_agent_engineering_student.md     # 第2节 学生课件
 ├── lesson_03_project_deployment_teacher.md    # 第3节 教师教案
@@ -70,7 +71,7 @@ courseware/
 └── lesson_05_resume_interview_student.md        # 第5节 学生课件
 ```
 
-> 第 1 节《求职规划》见上级目录 `lesson_01_career_planning.md`（本身就是教师教案格式）。
+> 第 1 节《求职规划》**教师教案**见上级目录 `lesson_01_career_planning.md`；**学生课件**见本目录 `lesson_01_career_planning_student.md`。
 
 ---
 

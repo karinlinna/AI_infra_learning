@@ -148,6 +148,14 @@ def tokenize(text):
 
 
 # ---- 4b. Dense 稠密向量召回 ----
+4. dense_recall —— 召回主流程
+
+# def dense_recall(query, chunks, topk=5):
+#     qv = embed(query)                                          # 查询转向量
+#     scored = [(c["chunk_id"], cosine(qv, embed(c["text"])))    # 逐块算相似度
+#               for c in chunks]
+#     return sorted(scored, key=lambda x: -x[1])[:topk]          # 降序取前 topk
+
 # 生产环境：Qwen3-Embedding 生成向量，存入 Milvus 做 ANN 检索。
 # 这里用“词袋 hash 向量 + 余弦相似度”模拟稠密语义匹配。
 def embed(text, dim=128):
@@ -170,6 +178,15 @@ def dense_recall(query, chunks, topk=5):
 
 
 # ---- 4c. Sparse 稀疏语义召回 ----
+# 核心思想：只有 query 和文档里"共同出现的词"才贡献分数。
+
+# qset = Counter(tokenize(query))     # 统计 query 每个词的词频
+# for c in chunks:
+#     cset = Counter(tokenize(c["text"]))   # 统计文档每个词的词频
+#     s = sum(qset[t] * cset[t] for t in qset if t in cset)  # 稀疏点积
+
+# Counter 会把词列表变成"词 → 出现次数"的字典，例如：
+# tokenize("检索 增强 检索") → Counter({"检索": 2, "增强": 1, ...})
 # 生产环境：BGE-M3 输出的稀疏权重向量。这里用加权词频模拟“带语义权重的稀疏表示”。
 def sparse_recall(query, chunks, topk=5):
     qset = Counter(tokenize(query))
@@ -184,6 +201,41 @@ def sparse_recall(query, chunks, topk=5):
 
 # ---- 4d. BM25 字面召回 ----
 # 生产环境：可用 Elasticsearch / rank_bm25 库。这里手写标准 BM25 公式。
+# ┌──────────────┬─────────────────────┬──────────────────────────┬───────────────────────┐
+# │     方法     │      匹配依据       │           擅长           │         短板          │
+# ├──────────────┼─────────────────────┼──────────────────────────┼───────────────────────┤
+# │ Dense（4b）  │ 语义向量相似        │ 近义词、换种说法         │ 需要好的 embedding    │
+# │              │                     │                          │ 模型                  │
+# ├──────────────┼─────────────────────┼──────────────────────────┼───────────────────────┤
+# │ Sparse（4c） │ 共现词加权          │ 精确关键词               │ 不懂近义词            │
+# ├──────────────┼─────────────────────┼──────────────────────────┼───────────────────────┤
+# │ BM25（4d）   │ 字面 + idf +        │ 专有名词、术语、精确匹配 │ 完全不懂语义          │
+# │              │ 长度归一            │                          │                       │
+# └──────────────┴─────────────────────┴──────────────────────────┴───────────────────────┘
+# 为什么要三种一起用？
+
+# 这就是 Hybrid（混合）检索 的思路：单一方法都有盲区，多路召回 + 结果融合（通常用 RRF 倒数排名融合）能显著提高召回质量。
+
+# query
+#  ├─ dense_recall  → 一组结果
+#  ├─ sparse_recall → 一组结果
+#  └─ bm25.recall   → 一组结果
+#         ↓
+#    融合/重排（RRF / rerank 模型）
+#         ↓
+#    最终 topk → 回溯 parent → 喂 LLM
+
+# ① 词频饱和（k1 控制）
+# - 一个词出现 1 次 vs 出现 100 次，相关性不该差 100 倍
+# - 这个公式让分数随词频增长但逐渐饱和（趋于上限），避免刷词频作弊
+
+# ② 长度归一化（b 控制）
+# - dl / self.avgdl：当前文档长度 / 平均长度
+# - 长文档天然包含更多词，容易蒙中关键词 → 用长度惩罚，避免长文档不公平地占优
+# - b=0.75 控制惩罚力度（b=0 不惩罚，b=1 完全按长度归一化）
+
+# k1=1.5, b=0.75 是业界公认的经验默认值。
+
 class BM25:
     def __init__(self, chunks, k1=1.5, b=0.75):
         self.k1, self.b = k1, b
@@ -218,6 +270,20 @@ class BM25:
 
 # ============================================================
 # 5. 融合排序：RRF 粗排 + Reranker 精排
+# 这段是检索链路的最后两步：融合 + 精排。前面三路召回（Dense/Sparse/BM25）各自给出一堆候选，这里负责把它们合并、排序、精选出最终喂给 LLM 的几个块。
+# 举例：块 A 在 Dense 排第1、BM25 排第3；块 B 只在 Dense 排第1。
+# A 因为被两路都召回，累加分更高 → 融合后 A 胜出。这正是 hybrid 想要的效果：多路共识的结果更可信。
+
+# ① overlap —— 字面词重合率
+# len(qtok & ctok) / len(qtok)
+# - qtok & ctok 是集合交集：query 和文档共有多少个词
+# - 除以 query 词数 → 归一化成比例
+# - 例：query 有 4 个词，文档命中其中 3 个 → overlap = 0.75
+
+# ② sim —— 稠密语义相似度
+# 就是前面的余弦相似度，捕捉语义层面的接近。
+# 最终分 = 0.5×字面重合 + 0.5×语义相似，字面和语义各看一半。
+
 # ============================================================
 def rrf_fuse(rank_lists, k=60):
     """Reciprocal Rank Fusion：把多路召回的排名倒数相加，做粗排融合。
@@ -230,17 +296,15 @@ def rrf_fuse(rank_lists, k=60):
 
 
 def rerank(query, candidates, mongo, topk=3):
-    """精排：生产环境用 BGE-Reranker（cross-encoder）对 query-doc 对逐一打分。
-    这里用 query 与 chunk 的 token 重合度 + 稠密相似度做近似 cross 打分。"""
-    qtok = set(tokenize(query))
-    qv = embed(query)
+    qtok = set(tokenize(query))     # query 的词集合
+    qv = embed(query)               # query 的向量
     scored = []
     for cid, _ in candidates:
-        c = mongo.get(cid)
+        c = mongo.get(cid)          # 从"数据库"取回块的完整内容
         ctok = set(tokenize(c["text"]))
-        overlap = len(qtok & ctok) / (len(qtok) or 1)
-        sim = cosine(qv, embed(c["text"]))
-        scored.append((cid, 0.5 * overlap + 0.5 * sim))
+        overlap = len(qtok & ctok) / (len(qtok) or 1)   # 词重合率
+        sim = cosine(qv, embed(c["text"]))              # 语义相似度
+        scored.append((cid, 0.5 * overlap + 0.5 * sim)) # 两者各半加权
     return sorted(scored, key=lambda x: -x[1])[:topk]
 
 
@@ -321,3 +385,15 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# 用户 query
+#    ↓
+# 多路召回 → rrf_fuse 粗排 → rerank 精排
+#    ↓
+# 最终 top3 的 chunk_id（子块 id）
+#    ↓
+# mongo.get(cid) → 拿到子块，读它的 parent_id
+#    ↓
+# parents[parent_id] → 回溯到父块（整页文本 + figures）
+#    ↓
+# 把这些父块的 text 拼接起来  ==  context   ← 就是它

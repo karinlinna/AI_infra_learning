@@ -81,31 +81,9 @@ AI for Software Engineering　　荣誉学士项目　　2024.02 – 2024.09
 
 课后需要辛苦您帮忙填写一份GAP分析表格，稍后我会同步给您。补充说明一下：虽然系统会自动生成一份GAP分析报告，但AI生成的内容有时不够精准，所以还需要您结合系统初稿，再手动调整、完善一下我们这个简洁版的表格，确保信息准确到位，辛苦您啦～
 
-**元宝后台开发应届毕业生补录，base 北京，深圳**
 
-**岗位职责**
 
-1、负责元宝后台系统架构设计与开发，支撑高并发、低延迟的AI应用服务；
 
-2、基于LLM大模型能力场景，推进建设AIGC平台研发落地，支持插件接入&管理、数据飞轮pipeline等平台能力，为AI Agent的研发上线提升效率和质量；
-
-3、负责解决平台和服务在高并发场景下的性能优化，问题定位&解决，保障服务SLA。
-
-**岗位要求**
-
-1、计算机专业本科及以上学历，毕业时间2025.1.1-2026.12.31；
-
-2、熟悉系统运维的基础知识，能够排查实际问题；
-
-3、精通GO，C++，Python开发语言中的一种或多种，熟悉常见rpc框架；
-
-4、熟悉微服务架构、数据库（MySQL/Redis/MongoDB）、消息队列（Kafka/RabbitMQ）及容器化技术（Docker/K8s）；
-
-5、有流程编排引擎（如Airflow）、LLM应用开发框架（如eino）开发经验优先，能够支持复杂AI Agent的任务链编排与管理；
-
-6、有责任心，能积极主动推进项目进展，具备团队协作意识，和良好的沟通能力。
-
-这是这张招聘岗位描述截图的文字内容：
 
 **岗位职责：**
 
@@ -130,3 +108,41 @@ AI for Software Engineering　　荣誉学士项目　　2024.02 – 2024.09
 4、后训练实战经验：具备大模型指令微调、RLHF/RLAIF、奖励模型训练等后训练全流程经验，熟悉 Agent 任务规划、工具调用等核心场景的训练优化方法。
 
 需要我帮你做进一步处理吗，比如整理成 Word 文档、提炼要点，或者根据这个职位描述润色简历？
+
+
+**图1：AI应用开发工程师**
+
+标签：自然语言处理算法 | 多模态算法 | 算法工程化经验 | 优秀开源项目经历 | SQL | 查看全部
+
+岗位职责：
+1. 参与AI平台和应用后端核心功能的代码开发、测试与维护，高质量完成业务需求的技术实现。
+2. 深入理解业务需求，完成AI模型集成、调试和优化等工作，负责AI应用的功能开发、接口开发及前端交互对接。
+3. 参与通用能力的封装和标准化工作，如智能体SDK、RAG引擎接口、算力资源接入等，提升研发效率。
+4. 与产品、算法、测试等跨部门协作，完成需求对接、问题排查，参与产品迭代，反馈开发过程中的技术问题。
+
+任职要求：
+1. 熟练掌握Java、Python、Golang中的至少一门语言，熟悉常用Web框架和数据库技术，具备良好的编码习惯。
+2. 了解大模型、智能体、RAG等基本概念和原理，有调用大模型API或使用相关框架（如LangChain、LangGraph、Dify）进行开发或二开的经验。
+3. 能够独立完成清晰、可维护的代码编写，具备基础的系统模块设计和问题排查能力。
+4. 具备基本的问题排查能力，能够解决开发过程中的常见技术问题，具备较强的责任心和执行力。
+5. 计算机相关专业研究生及以上学历，3年以上AI相关产品或平台的核心开发与架构经验。
+
+
+---
+
+**图2：算法工程师**
+
+岗位职责：
+1. 参与微软搜索广告系统的设计和开发工作，利用最前沿的机器学习和深度学习技术，改善广告召回，相关性，排序及收益
+2. 分析和理解真实用户行为，在海量数据中提取有效特征和信息
+3. 保持对数字的敏感性，基于测试结果及线上/线下指标对产品进行进一步改进
+4. 深入理解搜索广告系统，主动探索并发现问题，应用算法及相关技术手段进行改善
+
+Senior Applied Scientist– Bing Search Ads Understanding
+
+Qualifications
+- 4+ years of experience in data science, machine learning, Natural Language Processing, or similar areas.
+- Strong communications skills (both verbal and written in English).
+- Great intuition and ability to "make sense of the numbers."
+- Motivated and self–directed. Demonstrated ability to come up-to-speed quickly on a new technical domain is required.
+- Work well in a team environment.

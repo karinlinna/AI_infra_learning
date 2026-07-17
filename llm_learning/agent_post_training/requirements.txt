@@ -1,0 +1,11 @@
+# ===== base 档：本地/CPU 可跑，用于数据构造与评测闭环 =====
+torch>=2.1
+transformers>=4.40
+numpy>=1.24
+
+# ===== train 档：GPU 机器真训练时再装（本地可不装）=====
+# 取消注释或单独 pip install:
+# trl>=0.9
+# peft>=0.11
+# accelerate>=0.30
+# datasets>=2.19

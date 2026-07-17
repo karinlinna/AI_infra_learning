@@ -146,3 +146,6 @@ Qualifications
 - Great intuition and ability to "make sense of the numbers."
 - Motivated and self–directed. Demonstrated ability to come up-to-speed quickly on a new technical domain is required.
 - Work well in a team environment.
+
+
+
